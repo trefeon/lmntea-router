@@ -103,6 +103,13 @@ export function createEarlyKeepaliveTransform(
     if (terminated) return
     terminated = true
     clearTimers()
+    try {
+      const ctrl = controllerRef as unknown as {
+        terminate?: () => void
+        error?: (reason: unknown) => void
+      } | null
+      ctrl?.terminate?.()
+    } catch {}
   }
 
   abortController.signal.addEventListener('abort', stop, { once: true })

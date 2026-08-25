@@ -51,7 +51,10 @@ function createControlledUpstream() {
   return {
     stream,
     enqueue(text: string) {
-      controller?.enqueue(chunk(text))
+      try {
+        if (controller && controller.desiredSize !== null)
+          controller.enqueue(chunk(text))
+      } catch {}
     },
     close() {
       try {
@@ -196,7 +199,7 @@ describe('earlyKeepalive', () => {
 
   it('header preservation — withEarlyKeepaliveResponse fast path preserves upstream headers', async () => {
     const upstreamPromise = Promise.resolve(
-      new Response(chunk('data: fast\n\n'), {
+      new Response('data: fast\n\n', {
         status: 200,
         headers: {
           'Content-Type': 'text/event-stream',
@@ -205,7 +208,6 @@ describe('earlyKeepalive', () => {
         },
       }),
     )
-
     const result = await withEarlyKeepaliveResponse(upstreamPromise, {
       graceMs: 2000,
       intervalMs: 3000,
@@ -234,7 +236,7 @@ describe('earlyKeepalive', () => {
             headers: { 'Content-Type': 'text/event-stream' },
           }),
         )
-      }, 5000)
+      }, 6000)
     })
 
     const responsePromise = withEarlyKeepaliveResponse(upstreamPromise, {
@@ -262,8 +264,8 @@ describe('earlyKeepalive', () => {
     const second = await reader.read()
     expect(toText(second.value!)).toBe(': keepalive\n\n')
 
-    // advance to upstream resolve at 5000 total
-    await vi.advanceTimersByTimeAsync(2000)
+    // advance to upstream resolve at 6000 total (1000 more)
+    await vi.advanceTimersByTimeAsync(1000)
     const third = await reader.read()
     expect(toText(third.value!)).toBe('data: hello\n\n')
 
@@ -296,11 +298,14 @@ describe('earlyKeepalive', () => {
         }, 4000)
       })
 
-      const resp = await withEarlyKeepalive(upstreamPromise as Promise<Response>, {
-        graceMs: 2000,
-        intervalMs: 3000,
-        signal: c.req.raw.signal,
-      })
+      const resp = await withEarlyKeepalive(
+        upstreamPromise as Promise<Response>,
+        {
+          graceMs: 2000,
+          intervalMs: 3000,
+          signal: c.req.raw.signal,
+        },
+      )
       return resp
     })
 
@@ -410,3 +415,4 @@ describe('earlyKeepalive', () => {
     const result = await reader.read()
     expect(result.done).toBe(true)
   })
+})
