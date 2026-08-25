@@ -44,3 +44,4 @@ export function clampBody(
 
   return copy
 }
+export const clampMaxTokens = clampBody
