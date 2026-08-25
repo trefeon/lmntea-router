@@ -23,3 +23,11 @@ coverage/
 .turbo/
 
 # Env lock (keep pnpm-lock.yaml tracked, so not ignored)
+
+# Agent skills (skills.sh — local only, installed via npx skills add)
+.agents/
+.claude/
+.skills/
+.cursor/
+skills-lock.json
+skills.local.json
