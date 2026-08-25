@@ -26,7 +26,6 @@ coverage/
 
 # Agent skills (skills.sh — local only, installed via npx skills add)
 .agents/
-.claude/
 .skills/
 .cursor/
 skills-lock.json
