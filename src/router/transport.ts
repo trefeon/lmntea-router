@@ -41,8 +41,10 @@ export interface RelayRequestInit extends RequestInit {
 
 /**
  * Returns true if `host` is private, loopback, metadata, or ULA and must be blocked.
- * Covers: localhost, 127.0.0.1, ::1, 0.0.0.0, 169.254.169.254, 10/8, 192.168/16,
- * 172.16/12, 169.254/16 link-local, fc/fd ULA. Case-insensitive, bracket-aware.
+ * Covers: localhost, 127.0.0.0/8, ::1, 0.0.0.0, ::, ::ffff:127.0.0.1, 169.254.169.254, 10/8, 192.168/16,
+ * 172.16/12, 169.254/16 link-local, fc00::/7 (fc/fd), fe80::/10 (fe80-febf). Case-insensitive, bracket-aware,
+ * zone-id aware (%eth0), and port-aware for host:port forms. Only IPv6 literals (contains ':') are
+ * checked against fc/fd/fe80 ranges to avoid false positives on hostnames like facebook.com.
  */
 export function isPrivateHostname(host: string): boolean {
   if (!host) return true
@@ -52,30 +54,51 @@ export function isPrivateHostname(host: string): boolean {
     const end = raw.indexOf(']')
     withoutBrackets = raw.slice(1, end)
   }
+  // strip IPv6 zone identifier (e.g., fe80::1%eth0)
+  const pct = withoutBrackets.indexOf('%')
+  if (pct !== -1) withoutBrackets = withoutBrackets.slice(0, pct)
+
   let h = withoutBrackets
   const hasDoubleColon = withoutBrackets.includes('::')
-  const startsFcFd =
+  const isIPv6Like = withoutBrackets.includes(':')
+  const isUlaOrLinkLocalStart =
     withoutBrackets.startsWith('fc') ||
     withoutBrackets.startsWith('fd') ||
-    withoutBrackets.startsWith('fe80')
-  if (withoutBrackets.includes(':') && !hasDoubleColon && !startsFcFd) {
+    /^fe[89ab]/.test(withoutBrackets)
+  if (
+    withoutBrackets.includes(':') &&
+    !hasDoubleColon &&
+    !isUlaOrLinkLocalStart
+  ) {
     const lastColon = withoutBrackets.lastIndexOf(':')
     const candidate = withoutBrackets.slice(0, lastColon)
     if (candidate.includes('.') || candidate === 'localhost') h = candidate
   }
 
   if (
-    ['localhost', '127.0.0.1', '::1', '0.0.0.0', '::ffff:127.0.0.1'].includes(h)
+    [
+      'localhost',
+      '127.0.0.1',
+      '::1',
+      '0.0.0.0',
+      '::',
+      '::ffff:127.0.0.1',
+    ].includes(h)
   )
     return true
+  // 127.0.0.0/8 — all loopback
+  if (h.startsWith('127.')) return true
+  if (h.startsWith('::ffff:127.')) return true
   if (h === '169.254.169.254') return true
   if (h.startsWith('10.')) return true
   if (h.startsWith('192.168.')) return true
   if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(h)) return true
   if (h.startsWith('169.254.')) return true
-  if (h.startsWith('fc') || h.startsWith('fd')) return true
-  if (h.startsWith('fe80')) return true
   if (h.startsWith('0.')) return true
+  // fc00::/7 — ULA (fc00:: - fdff::), only for IPv6 literals to avoid hostname false positives
+  if (isIPv6Like && (h.startsWith('fc') || h.startsWith('fd'))) return true
+  // fe80::/10 — link-local (fe80:: - febf::), only for IPv6 literals
+  if (isIPv6Like && /^fe[89ab]/.test(h)) return true
   return false
 }
 
@@ -181,9 +204,20 @@ export function getDefaultRelayPool(): string[] {
     .filter(Boolean)
 }
 
+export function isValidRelaySecret(s: string): boolean {
+  return /^[0-9a-f]{64}$/i.test(s)
+}
+
 export function getRelayAuthSecret(): string | undefined {
   const s = process.env.RELAY_AUTH_SECRET
   if (s && s.trim().length > 0) return s.trim()
+  return undefined
+}
+
+/** Strict variant — returns secret only if it is valid 32-byte hex (64 hex chars). */
+export function getValidatedRelaySecret(): string | undefined {
+  const s = getRelayAuthSecret()
+  if (s && isValidRelaySecret(s)) return s
   return undefined
 }
 

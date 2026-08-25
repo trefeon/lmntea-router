@@ -22,7 +22,8 @@
     "lint:fix": "biome check --write .",
     "format": "biome check --write .",
     "check": "biome check . && tsc --noEmit",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:e2e": "vitest run tests/e2e/smoke.test.ts"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.1",

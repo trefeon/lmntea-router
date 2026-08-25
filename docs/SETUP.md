@@ -117,7 +117,7 @@ curl http://localhost:3000/health
 # authenticated probe — replace token with one entry from AUTH_TOKENS
 curl http://localhost:3000/v1/models \
   -H "Authorization: Bearer sk-lmntea-dev-1" | jq '.data | length'
-# e.g. 12  (static registry count — enriched when intelligence sync is on)
+# e.g. 8  (static registry count — enriched when intelligence sync is on)
 
 # without auth when AUTH_TOKENS is set → 401
 curl http://localhost:3000/v1/models
@@ -150,16 +150,14 @@ curl -N http://localhost:3000/v1/messages \
   }'
 ```
 
-If you see `: keepalive` comment frames before the first token on a slow model, the `earlyKeepalive` path is working.
-
 ---
 
 ## 5. Tests
 
 ```bash
-pnpm test           # Vitest — all suites, no ports, no real network
+pnpm test           # 21 suites, 327 tests — no ports, no real network
 pnpm run test:watch # watch mode
-pnpm run test:coverage  # coverage report (target ≥80% on translator/normalizer/streaming)
+pnpm run test:coverage  # coverage report (threshold 85% — enforced in vitest.config.ts)
 ```
 
 With real upstream keys (opt-in, never in CI):
@@ -187,17 +185,20 @@ test('clamps max_tokens to model ceiling', async () => {
 });
 ```
 
-### Lint & typecheck
+### Lint & typecheck & build
 
 ```bash
 pnpm run lint:fix          # Biome format + lint (auto-fix)
 pnpm exec biome check .    # check only
 pnpm exec tsc --noEmit     # types
-pnpm run build             # tsup → dist/
+pnpm run build             # tsup → dist/index.js ~60 KB + dist/index.js.map ~160 KB + dist/index.d.ts 370 B
 pnpm run check             # biome + tsc (CI gate)
+pnpm run start             # node dist/index.js (after build)
 ```
 
-See `docs/ARCHITECTURE.md` for the module map and request pipeline.
+Build config (`tsup.config.ts`): `src/index.ts` → `esm` + `dts` + `sourcemap`, `target: es2022`, `splitting: false`.
+
+See `docs/ARCHITECTURE.md` for the module map and 6-stage pipeline.
 
 ---
 

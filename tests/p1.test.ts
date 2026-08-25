@@ -35,11 +35,16 @@ describe('P1 — Ingress & Auth (legacy p1.test.ts, now 501/422)', () => {
       headers: { Authorization: `Bearer ${VALID}` },
     })
     expect(res.status).toBe(200)
-    const body = (await res.json()) as { object: string; data: unknown[] }
+    const body = (await res.json()) as {
+      object: string
+      data: Array<{ id: string }>
+    }
     expect(body.object).toBe('list')
-    expect(body.data.length).toBe(2)
+    expect(body.data.length).toBeGreaterThanOrEqual(2)
+    const ids = body.data.map((m) => m.id)
+    expect(ids).toContain('opencode/x-preview-f-free')
+    expect(ids).toContain('opencode/muse-spark-1.2-contributor-free')
   })
-
   it('GET /v1/models with x-api-key valid → 200', async () => {
     const app = createApp()
     const res = await app.request('/v1/models', {

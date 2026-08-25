@@ -24,28 +24,25 @@ Read `docs/README.md` (quick start + curl) and `docs/ARCHITECTURE.md` (pipeline 
 **Scripts (canonical):**
 ```bash
 pnpm dev          # tsx watch src/index.ts  (≈10 ms boot)
-pnpm test         # vitest run
+pnpm test         # vitest run — 21 suites, 327 tests
 pnpm test:watch   # vitest
 pnpm test:coverage# vitest run --coverage (threshold 85%)
 pnpm lint         # biome check .
 pnpm lint:fix     # biome check --write .
 pnpm typecheck    # tsc --noEmit
-pnpm build        # tsup src/index.ts --format esm --dts --clean
+pnpm build        # tsup src/index.ts --format esm --dts --clean → dist/index.js ~60 KB
 pnpm start        # node dist/index.js
 ```
-
 ---
 
 ## 2. Canonical module tree — 16 files, no aliases
-
-Do not rename, move, or add top-level dirs (`src/lib/`, `pkg/`) without an ADR. Every import path in every phase maps here:
 
 ```
 src/
 ├── index.ts                              # Hono app factory, middleware order, route wiring, GET /health
 ├── config/
 │   ├── models.ts                         # ModelSpec registry — contextWindow, maxOutputTokens, stripParams
-│   └── providers.ts                      # Upstream endpoints, key pools, relay pool, SSRF guard
+│   └── providers.ts                      # Upstream endpoints, key pools, SSRF guard
 ├── intelligence/
 │   ├── sync.ts                           # OpenRouter + Artificial Analysis background sync
 │   └── scoring.ts                        # valueScore = quality/price, tier ranking
@@ -58,6 +55,7 @@ src/
 │   ├── openai-to-gemini.ts               # OpenAI ↔ Gemini generateContent (systemInstruction, thought)
 │   └── tools.ts                          # enforceToolResultAdjacency, orphan → text, role-merge
 ├── streaming/
+│   ├── sse.ts                            # SSE formatters, headers, stall synthesis (createMockSSEStream)
 │   ├── earlyKeepalive.ts                 # 2 s grace → SSE comment ping `: keepalive` every 3 s
 │   └── stallWatchdog.ts                  # 60 s reset-on-chunk → synthesize graceful finish + [DONE]
 └── router/
@@ -66,8 +64,9 @@ src/
     └── transport.ts                      # relay pool 25 s watchdog + direct/VPS fallback, x-relay-auth
 ```
 
-`tests/` mirrors `src/` (see §5). Cross-doc invariant: `docs/ARCHITECTURE.md` and `docs/README.md` repeat this tree verbatim — update all three in one commit if it ever changes.
+Full `src/` is 29 files — the 16 above are the pipeline core; `src/routes/` (chat, messages, models), `src/middleware/` (auth, bodyLimit, contentType, requestId, errors), `src/schemas/`, and `src/types.ts` are wiring around that core.
 
+`tests/` mirrors `src/` (see §5). Cross-doc invariant: `docs/ARCHITECTURE.md` and `docs/README.md` repeat this core tree verbatim — update all three in one commit if it ever changes.
 ---
 
 ## 3. Request pipeline — 6 stages + registry side-car

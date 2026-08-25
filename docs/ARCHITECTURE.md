@@ -40,27 +40,28 @@ Error path: `400` → immediate reject (no retry, no cooldown). `401/403/429` �
 
 ## Module Map
 
-Canonical tree — authoritative in every doc and in code:
-
 | Module | Path | Responsibility | Key Exports |
 |---|---|---|---|
 | **Entry** | `src/index.ts` | Hono app, route wiring, `GET /health` | `app`, `start()` |
+| **Routes** | `src/routes/chat.ts`, `messages.ts`, `models.ts` | Hono handlers — Zod parse → normalizer → dispatch → streaming | `mountChat`, `mountMessages`, `mountModels` |
+| **Middleware** | `src/middleware/auth.ts`, `bodyLimit.ts`, `contentType.ts`, `requestId.ts` | 415 guard, 413 body limit (1 MB), 401 auth, request-id propagation | `authMiddleware`, `bodyLimitMiddleware` |
+| **Schemas** | `src/schemas/chat.ts`, `messages.ts` | Ingress Zod schemas (max_tokens bounds, tool shapes) | `ChatCompletionRequestSchema` |
 | **Model Registry** | `src/config/models.ts` | Declarative per-model caps (`contextWindow`, `maxOutputTokens`, `stripParams`, `requiresThinkingReconciliation`) | `MODEL_REGISTRY`, `ModelSpec` |
-| **Provider Registry** | `src/config/providers.ts` | Upstream base URLs, key pools, relay pool, `isPrivateHostname` SSRF guard | `PROVIDER_REGISTRY`, `RELAY_POOL` |
+| **Provider Registry** | `src/config/providers.ts` | Upstream base URLs, key env mapping, relay flag | `PROVIDERS`, `getProviderForModel` |
 | **Intelligence Sync** | `src/intelligence/sync.ts` | Background sync from OpenRouter (`/api/v1/models`) + Artificial Analysis v2 | `syncModels()`, `UnifiedModelSpec` |
 | **Intelligence Scoring** | `src/intelligence/scoring.ts` | Value score = quality/price, tier recommendation | `scoreModel()`, `rankByValue()` |
 | **Clamp** | `src/normalizer/clamp.ts` | `availableOutput = contextWindow - inputTokens - 256`; `max_tokens = min(client_max, model.maxOutput, availableOutput)` | `clampMaxTokens()` |
-| **Sanitize** | `src/normalizer/sanitize.ts` | Strip unsupported sampling params per `supportedParams` (e.g. drop `temperature` on o1/DeepSeek) | `sanitizeParams()` |
+| **Sanitize** | `src/normalizer/sanitize.ts` | Strip unsupported sampling params per `stripParams` (e.g. drop `temperature` on reasoning models) | `sanitizeParams()` |
 | **Thinking** | `src/normalizer/thinking.ts` | Reconcile `max_tokens > thinking.budget_tokens + 1024`; map `reasoning_effort` ↔ budget table | `normalizeThinking()` |
 | **OAI → Claude** | `src/translator/openai-to-claude.ts` | System hoist, `cache_control` breakpoints, role alternation, message shape conversion | `openaiToClaude()` |
 | **OAI → Gemini** | `src/translator/openai-to-gemini.ts` | `systemInstruction`, `contents`/`parts`, `thought`/`thoughtSignature`, consecutive-role merge | `openaiToGemini()` |
 | **Tools** | `src/translator/tools.ts` | `enforceToolResultAdjacency`, orphan → user-text fallback, missing-tool fill | `repairToolAdjacency()` |
-| **Early Keepalive** | `src/streaming/earlyKeepalive.ts` | If no header/chunk in 2 s, flush `200 text/event-stream` + `: keepalive\\n\\n` every 3 s until real data | `withEarlyKeepalive()` |
+| **SSE** | `src/streaming/sse.ts` | SSE formatters, `text/event-stream` headers, stall synthesis (`finish_reason: stop`) | `formatData`, `sseHeaders`, `createMockSSEStream` |
+| **Early Keepalive** | `src/streaming/earlyKeepalive.ts` | If no header/chunk in 2 s, flush `200 text/event-stream` + `: keepalive\n\n` every 3 s until real data | `withEarlyKeepalive()` |
 | **Stall Watchdog** | `src/streaming/stallWatchdog.ts` | 60 s reset-on-chunk timer; on stall emits synthesized `finish_reason: stop` / `message_delta` + `[DONE]` | `StallWatchdog` |
 | **Combo** | `src/router/combo.ts` | `fallback` / `priority` / `value-driven` strategies, least-busy selection | `routeCombo()` |
 | **Circuit Breaker** | `src/router/circuitBreaker.ts` | Error classifier, sliding-window `AllowedFails` (60 s), cooldown with 300 s cap | `classifyError()`, `shouldTrip()` |
 | **Transport** | `src/router/transport.ts` | Relay vs direct selection, `RELAY_TIMEOUT_MS = 25_000`, header sanitization, `x-relay-auth` | `dispatch()`, `proxyFetch()` |
-
 ---
 
 ## Data Flow & Invariants
@@ -90,10 +91,20 @@ Same 7 phases in `devdocs/02-ROADMAP.md`:
 
 > **Next step for contributors:** clone and follow `devdocs/SETUP.md` (<5 min). For the private deep dive: `devdocs/01-ARCHITECTURE.md` (topology, ADRs, failure taxonomy). For contracts: `devdocs/03-API-CONTRACTS.md`. For verification: `devdocs/04-TESTING.md`.
 
+## Build & Verification
+
+```bash
+pnpm build        # tsup → dist/index.js ~60 KB + dist/index.js.map ~160 KB + dist/index.d.ts 370 B
+pnpm typecheck    # tsc --noEmit — clean on main
+pnpm test         # 21 suites, 327 tests — hermetic app.request()
+```
+
+`tsup.config.ts`: `entry: ['src/index.ts']`, `format: ['esm']`, `dts: true`, `sourcemap: true`, `splitting: false`, `target: es2022`.
+
 ---
 
 ## Further Reading (public)
 
-- `docs/README.md` — landing page, quick start, `curl` examples.
+- `docs/README.md` — landing page, quick start, `curl` examples (stream + non-stream).
 - `devdocs/SETUP.md` — contributor setup (prereqs, env, where to add a provider).
 - Private (repo access only, gitignored): `devdocs/` + `research/` + `reference/` — see `devdocs/README.md` for the indexed map.

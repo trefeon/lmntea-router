@@ -60,10 +60,7 @@ cp .env.example .env
 
 # 4. Run (hot reload)
 pnpm dev
-# → Hono listening on http://localhost:3000
-```
-
-### Try it — OpenAI-compatible
+### Try it — OpenAI-compatible (non-stream)
 
 ```bash
 curl http://localhost:3000/v1/chat/completions \
@@ -73,11 +70,28 @@ curl http://localhost:3000/v1/chat/completions \
     "model": "opencode/x-preview-f-free",
     "messages": [{"role": "user", "content": "Write a hello world in Go"}],
     "max_tokens": 2048,
-    "stream": true
+    "stream": false
   }'
+# → {"id":"chatcmpl-...","choices":[{"message":{"content":"..."}}],"usage":{...}}
 ```
 
-### Try it — Anthropic-compatible
+### Try it — OpenAI-compatible (stream)
+
+```bash
+curl -N http://localhost:3000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $LMNTEA_API_KEY" \
+  -d '{
+    "model": "opencode/x-preview-f-free",
+    "messages": [{"role": "user", "content": "Write a hello world in Go"}],
+    "max_tokens": 2048,
+    "stream": true
+  }'
+# → data: {"choices":[{"delta":{"content":"package"}}]} ... data: [DONE]
+#   upstream slow? expect `: keepalive` comment frames every 3 s after 2 s grace
+```
+
+### Try it — Anthropic-compatible (non-stream)
 
 ```bash
 curl http://localhost:3000/v1/messages \
@@ -89,6 +103,23 @@ curl http://localhost:3000/v1/messages \
     "max_tokens": 2048,
     "messages": [{"role": "user", "content": "Explain circuit breakers in 3 bullets"}]
   }'
+# → {"id":"msg_...","content":[{"type":"text","text":"..."}]}
+```
+
+### Try it — Anthropic-compatible (stream)
+
+```bash
+curl -N http://localhost:3000/v1/messages \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: $LMNTEA_API_KEY" \
+  -H "anthropic-version: 2023-06-01" \
+  -d '{
+    "model": "claude-3-5-sonnet-20241022",
+    "max_tokens": 2048,
+    "stream": true,
+    "messages": [{"role": "user", "content": "Explain circuit breakers in 3 bullets"}]
+  }'
+# → event: message_start / event: content_block_delta ... data: [DONE]
 ```
 
 ### Other endpoints
@@ -97,21 +128,18 @@ curl http://localhost:3000/v1/messages \
 |---|---|---|
 | `GET` | `/v1/models` | Enriched model list (context window, modalities, TPS/TTFT when intelligence sync is enabled) |
 | `POST` | `/v1/chat/completions` | OpenAI Chat Completions (stream + non-stream) |
-| `POST` | `/v1/messages` | Anthropic Messages |
-| `GET` | `/health` | Liveness probe |
-
----
-
+| `POST` | `/v1/messages` | Anthropic Messages (stream + non-stream) |
+| `GET` | `/health` | Liveness probe (`/health/live`, `/health/ready` also available) |
 ## Project Structure
 
-Canonical module tree (same everywhere — `docs/`, `devdocs/`, code):
+Canonical pipeline core — 16 files (same everywhere — `docs/`, code, `AGENTS.md`). Full `src/` is 29 files including routes/middleware/schemas + SSE helpers:
 
 ```
 src/
 ├── index.ts                              # Hono app, ingress, route wiring
 ├── config/
 │   ├── models.ts                         # Declarative Model Registry & parameter bounds
-│   └── providers.ts                      # Upstream endpoints & API keys / relay pool
+│   └── providers.ts                      # Upstream endpoints & API keys
 ├── intelligence/
 │   ├── sync.ts                           # Background sync (OpenRouter + Artificial Analysis)
 │   └── scoring.ts                        # Quality / price value score (is it worth it?)
@@ -124,14 +152,39 @@ src/
 │   ├── openai-to-gemini.ts               # OpenAI ↔ Gemini generateContent
 │   └── tools.ts                          # Strict tool adjacency & orphan repair
 ├── streaming/
+│   ├── sse.ts                            # SSE formatters, headers, stall synthesis
 │   ├── earlyKeepalive.ts                 # 2 s SSE comment ping (: keepalive)
 │   └── stallWatchdog.ts                  # 60 s reset-on-chunk watchdog + graceful finish
-└── router/
-    ├── combo.ts                          # Fallback / priority / value-driven routing
-    ├── circuitBreaker.ts                 # Error classifier & cooldowns
-    └── transport.ts                      # Relay + direct dispatch, 25 s Vercel watchdog
+├── router/
+│   ├── combo.ts                          # Fallback / priority / value-driven routing
+│   ├── circuitBreaker.ts                 # Error classifier & cooldowns
+│   └── transport.ts                      # Relay + direct dispatch, 25 s Vercel watchdog
+├── routes/                               # Hono route handlers (chat, messages, models)
+├── middleware/                           # auth, bodyLimit, contentType, requestId, errors
+└── schemas/                              # Zod ingress schemas (chat, messages)
 ```
 
+Core 16 = the pipeline stages (index + config 2 + intelligence 2 + normalizer 3 + translator 3 + streaming 3 + router 3). `routes/`, `middleware/`, `schemas/`, and `streaming/sse.ts` are the wiring + helpers around that core.
+
+See [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md) for the 6-stage pipeline diagram and module table.
+
+### Build
+
+```bash
+pnpm build        # tsup src/index.ts --format esm --dts --clean
+# dist/index.js      ~60 KB (59.96 KB) — ESM bundle
+# dist/index.js.map  ~160 KB — sourcemap
+# dist/index.d.ts    370 B — type declarations
+pnpm start        # node dist/index.js
+pnpm typecheck    # tsc --noEmit
+```
+
+### Tests
+
+```bash
+pnpm test         # 21 suites, 327 tests — hermetic via app.request(), no ports
+pnpm test:coverage# vitest run --coverage (threshold 85%)
+```
 See [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md) for the request pipeline diagram and module table.
 
 ---
