@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "lmntea-router — Hono LLM gateway for coding harnesses (OpenAI ↔ Anthropic ↔ Gemini)",
   "type": "module",
-  "private": true,
+  "packageManager": "pnpm@9.12.3",
   "engines": {
     "node": ">=20"
   },

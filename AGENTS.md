@@ -1,0 +1,272 @@
+# AGENTS.md — lmntea-router harness guide
+
+> **For any AI coding agent** (Claude Code, Cursor, Cline, OpenCode, Hermes, Pi Dev, Aether, Antigravity, or a subagent in this repo). Keep this file <300 lines — link detail, don't duplicate. Single source of truth for public contributors; private deep dives live in `devdocs/` (gitignored) — see `docs/ARCHITECTURE.md` for the 1-page public overview.
+
+Read `docs/README.md` (quick start + curl) and `docs/ARCHITECTURE.md` (pipeline + module table) alongside this file. Treat all three as consistent — same stack, same 16-file tree, same 7 phases.
+
+---
+
+## 1. Stack — decided, not a choice
+
+| Layer | Choice | Version | Notes |
+|---|---|---|---|
+| **Language** | TypeScript | `5.6` `strict` | `noUncheckedIndexedAccess`, `erasableSyntaxOnly` |
+| **Runtime** | Bun (primary) + Node fallback | `Bun 1.2`, `Node >=20` | `Bun.serve` if available, else `@hono/node-server` |
+| **Framework** | Hono | `4.x` | Web Standards `Request`/`Response`/`ReadableStream`, no Next.js |
+| **Validation** | Zod | `3.x` | Ingress, registry, provider config — single pass |
+| **Test** | Vitest | `2.x` + `@vitest/coverage-v8` | In-memory `app.request()`, no TCP |
+| **Build** | tsup + tsx | `tsup 8.x`, `tsx 4.x` | `tsup` prod ESM+CJS+DTS, `tsx watch` dev |
+| **Lint/Format** | Biome | `1.9` | Replaces ESLint+Prettier, `biome check --write` |
+| **PM** | pnpm (primary) + bun compat | `pnpm 9.x` | `pnpm-lock.yaml` tracked |
+
+`hono` + `zod` are the only runtime deps; everything else is `devDependencies`. Never add `next`, `express`, or `axios`.
+
+**Scripts (canonical):**
+```bash
+pnpm dev          # tsx watch src/index.ts  (≈10 ms boot)
+pnpm test         # vitest run
+pnpm test:watch   # vitest
+pnpm test:coverage# vitest run --coverage (threshold 85%)
+pnpm lint         # biome check .
+pnpm lint:fix     # biome check --write .
+pnpm typecheck    # tsc --noEmit
+pnpm build        # tsup src/index.ts --format esm --dts --clean
+pnpm start        # node dist/index.js
+```
+
+---
+
+## 2. Canonical module tree — 16 files, no aliases
+
+Do not rename, move, or add top-level dirs (`src/lib/`, `pkg/`) without an ADR. Every import path in every phase maps here:
+
+```
+src/
+├── index.ts                              # Hono app factory, middleware order, route wiring, GET /health
+├── config/
+│   ├── models.ts                         # ModelSpec registry — contextWindow, maxOutputTokens, stripParams
+│   └── providers.ts                      # Upstream endpoints, key pools, relay pool, SSRF guard
+├── intelligence/
+│   ├── sync.ts                           # OpenRouter + Artificial Analysis background sync
+│   └── scoring.ts                        # valueScore = quality/price, tier ranking
+├── normalizer/
+│   ├── clamp.ts                          # effective = min(requested, maxOutput, contextWindow - inputTokens - 256)
+│   ├── sanitize.ts                       # strip unsupported sampling params per stripParams
+│   └── thinking.ts                       # reasoning_effort ↔ budget_tokens map + max_tokens reconciliation
+├── translator/
+│   ├── openai-to-claude.ts               # OpenAI ↔ Anthropic Messages (system hoist, cache_control)
+│   ├── openai-to-gemini.ts               # OpenAI ↔ Gemini generateContent (systemInstruction, thought)
+│   └── tools.ts                          # enforceToolResultAdjacency, orphan → text, role-merge
+├── streaming/
+│   ├── earlyKeepalive.ts                 # 2 s grace → SSE comment ping `: keepalive` every 3 s
+│   └── stallWatchdog.ts                  # 60 s reset-on-chunk → synthesize graceful finish + [DONE]
+└── router/
+    ├── combo.ts                          # fallback / priority / value-driven + least-busy picker
+    ├── circuitBreaker.ts                 # error classifier, 60 s sliding window, cooldown cap 300 s
+    └── transport.ts                      # relay pool 25 s watchdog + direct/VPS fallback, x-relay-auth
+```
+
+`tests/` mirrors `src/` (see §5). Cross-doc invariant: `docs/ARCHITECTURE.md` and `docs/README.md` repeat this tree verbatim — update all three in one commit if it ever changes.
+
+---
+
+## 3. Request pipeline — 6 stages + registry side-car
+
+```
+Client (harness) → 1 Ingress & Auth → 2 Normalizer → 3 Translator → 4 Router & Combo → 5 Transport → 6 Streaming → Client
+                     (Hono+Zod)        (clamp/sanitize/thinking)  (OAI↔Claude↔Gemini)  (breaker)      (relay/direct)   (dual-timer)
+                                          ↕                           ↕                  ↕
+                                       Model Registry (src/config/models.ts) — contextWindow / maxOutput / stripParams
+                                       Intelligence (sync.ts + scoring.ts) — advisory, never blocking; fallback is static registry
+```
+
+| # | Stage | Where | What | Fail signal |
+|---|---|---|---|---|
+| 1 | **Ingress & Auth** | `src/index.ts` | RFC 7231 `Content-Type: application/json` guard, JSON body limit, `Authorization: Bearer` / `x-api-key` / `anthropic-api-key` auth (priority order), `x-request-id`, rate-limit semaphore | `415`/`413`/`401` — no retry |
+| 2 | **Normalizer** | `src/normalizer/*` + `src/config/models.ts` | sanitize schemas → repair tool adjacency → normalize thinking budget → **clamp** `max_tokens` | `400` immediate reject — never failover |
+| 3 | **Translator** | `src/translator/*` | Build target wire payload (OpenAI Chat, Anthropic Messages, Gemini generateContent) | `400` if untranslatable |
+| 4 | **Router & Combo** | `src/router/combo.ts` + `circuitBreaker.ts` | Score candidates, check breaker, pick `argmin(in_flight)` account | `429` → rotate key; `5xx`/timeout → failover next candidate |
+| 5 | **Transport** | `src/router/transport.ts` | Vercel relay pool (25 s watchdog) → direct/VPS fallback, `x-relay-auth`, `isPrivateHostname` SSRF guard, `AbortController` chaining | — |
+| 6 | **Streaming** | `src/streaming/*` | `earlyKeepalive` (2 s → `: keepalive` every 3 s) + `stallWatchdog` (60 s → synthetic `finish_reason: stop` + `[DONE]`) + client `close` → upstream `abort()` | Stall → graceful finish, not exception |
+
+Full lifecycle diagram and failure taxonomy → `docs/ARCHITECTURE.md`.
+
+**Invariants:** normalizer is pure & synchronous (no I/O); translators are pure functions (input JSON → output JSON); router/transport own all side effects; streaming never swallows errors (mid-stream failures serialize as SSE error + `[DONE]`).
+
+---
+
+## 4. Setup — <5 min to 200
+
+```bash
+git clone https://github.com/trefeon/lmntea-router.git
+cd lmntea-router
+pnpm install            # or bun install
+cp .env.example .env    # set at least AUTH_TOKENS + one upstream key
+pnpm dev                # Hono on http://localhost:3000
+curl http://localhost:3000/health
+# {"status":"ok","version":"0.1.0"}
+
+# Harness smoke (streaming)
+curl -N http://localhost:3000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $LMNTEA_API_KEY" \
+  -d '{"model":"opencode/x-preview-f-free","messages":[{"role":"user","content":"Say hi in one sentence."}],"max_tokens":256,"stream":true}'
+# expect data: {"choices":[{"delta":{"content":"Hi"}}]} … data: [DONE]
+```
+
+`.env` and `.env.*` are gitignored — never commit them. CI injects secrets via env. `LOG_LEVEL`, `PORT`, relay and intelligence keys are all optional except `AUTH_TOKENS`.
+
+---
+
+## 5. Testing — hermetic invariant
+
+**Invariant:** `env -u AUTH_TOKENS pnpm test` must pass with no secrets and no network. Same `pnpm test` on a clean checkout, on CI, and locally must be hermetic. `test/setup.ts` injects deterministic defaults (`sk-test-hermetic-*`) when env is absent.
+
+```bash
+env -u AUTH_TOKENS pnpm test        # hermetic gate — CI
+pnpm test                           # normal dev (uses .env if present)
+pnpm test --coverage                # threshold 85% lines/branches/functions/statements
+pnpm test:watch
+```
+
+**Rules:**
+
+- Use `app.request()` (Hono in-memory), never `app.listen` / `fetch("http://localhost:…")` / open ports. ~2 ms per test, no cleanup.
+- Mock upstream `fetch` per test: `vi.stubGlobal('fetch', mockFetch)`. Never hit `openrouter.ai` or live providers in unit/integration — only an explicit `E2E=1` job may do real HTTP (under `tests/e2e/`, gated `if (!process.env.E2E) it.skip(...)`).
+- Translators are pure — unit-test via direct import without HTTP.
+- Streaming: assert on `Response.body` chunks and SSE shapes (`data:` for OpenAI, `event:`/`data:` for Anthropic, terminal `data: [DONE]`). Use `vi.useFakeTimers()` for keepalive/watchdog timing.
+- No `test.only` / `describe.only` — CI sets `forbidOnly: true`.
+- Coverage is enforced in `vitest.config.ts` (85% hard fail, excludes `tests/**`, `dist/**`).
+
+```ts
+// Canonical pattern — no server.listen()
+import { app } from '@/index.js';
+test('clamps max_tokens for opencode/x-preview-f-free to 131072', async () => {
+  const res = await app.request('/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer sk-test-hermetic-1' },
+    body: JSON.stringify({ model: 'opencode/x-preview-f-free', messages: [{ role: 'user', content: 'hi' }], max_tokens: 200_000 }),
+  });
+  expect(res.status).toBe(200);
+});
+```
+
+Error classifier to keep in mind (asserted in tests): `400` → `REJECT_IMMEDIATE` (no retry); `401/429` → rotate key; `5xx`/`504`/timeout/stall → failover to next combo candidate; 3× `5xx` in 60 s → trip circuit breaker (cooldown 60 s, cap 300 s). Relay timeout = `25_000` ms, stream stall = `60_000` ms, early keepalive grace = `2_000` ms.
+
+Detail → `docs/README.md` § Features and `docs/ARCHITECTURE.md` § Data Flow (public) — full case matrix in the private `devdocs/04-TESTING.md` when you have repo access.
+
+---
+
+## 6. Research grounding — don't invent limits
+
+If you have the private checkout (contains `research/` + `reference/` + `devdocs/` — gitignored, absent on fresh GitHub clones):
+
+- Before touching `config/models.ts` / `normalizer/*`, read `research/per_model_failure_analysis.md` (§3 clamp table is normative — `x-preview-f-free → 131072`, `laguna → 262144` window, `deepseek-v4-flash → 200000`, etc.) and `research/openrouter_models_specification.md`.
+- Before touching `translator/*`, read `research/universal_protocol_translation_spec.md` (wire table, role alternation, tool adjacency/orphan repair, reasoning matrix).
+- Before touching `streaming/*`, read `research/comparative_architecture_study.md` §3.
+- Before touching `router/*` or relay/transport, read `research/proxy_pools_vercel_relay_audit.md` (hardened `x-relay-auth` + `isPrivateHostname` SSRF guard + 25 s watchdog).
+- Anti-pattern: do not paste raw `reference/9router` or `reference/OmniRoute` source into prompts — the distilled docs already cite the exact upstream PR.
+
+If you only have public access, `docs/ARCHITECTURE.md` is the self-contained source of truth. In either case: **cite the doc or `reference/` file that justifies a provider limit in your PR description — never guess a `contextWindow` or `maxOutputTokens`.**
+
+```
+# Ground an agent prompt (copy-paste)
+You are working on lmntea-router (TS+Hono+Bun). Before writing code:
+1. Read docs/ARCHITECTURE.md for the pipeline and module tree.
+2. If research/ is present, read the relevant research doc for your area (see table above).
+3. Keep the 16-file tree and 6-stage pipeline unchanged.
+4. Translators are pure functions; streaming uses Web Streams; tests use app.request().
+Do not invent provider limits — cite a research/ doc or reference/ file.
+```
+
+---
+
+## 7. Branch & commit conventions
+
+- **Branches:** `feat/p<n>-<slug>` per roadmap phase (e.g. `feat/p2-normalizer`, `feat/p3-translator`, `feat/add-volcengine-kimi-k2`), or `fix/<slug>`, `chore/<slug>`, `docs/<slug>`. One phase/slice per branch.
+- **Commits:** Conventional Commits (`feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `test:`) with scope when useful (`feat(router): add value-driven combo`). Keep commits reviewable — one logical change each.
+- **PRs:** One phase or one provider per PR. Description must include: registry diff, translator diff, transport tier note, test evidence (`pnpm test` + relevant integration case), and the `research/` citation for clamp values.
+- **Gates (must pass before merge):** `pnpm typecheck && pnpm lint && pnpm test && pnpm build`. Husky pre-commit runs `biome check --write --staged`, `tsc --noEmit`, `vitest related --run`.
+- **Phases (canonical order, dependency-locked):** P0 Bootstrap & Tooling → P1 Ingress & Auth → P2 Normalizer & Registry → P3 Translator → P4 Streaming Engine → P5 Router & Relay → P6 Intelligence & Polish. Don't start P3 before P2; P5 needs P2+P3+P4. See `docs/README.md` § Roadmap and `docs/ARCHITECTURE.md` § Phases.
+
+---
+
+## 8. Where to add a new provider — 4-step checklist
+
+Follow in order, no shims, no deprecated paths. Example models: `volcengine/kimi-k2`, `zai/glm-4.6v`, `bedrock/claude-4`.
+
+**Step 1 — Registry entry (`src/config/models.ts` + `src/config/providers.ts`)**
+
+```ts
+// src/config/models.ts — one entry per model id you will route to
+'volcengine/kimi-k2': {
+  id: 'volcengine/kimi-k2',
+  contextWindow: 131072,
+  maxOutputTokens: 32768,           // exact upstream ceiling — not a guess
+  stripParams: ['temperature'],     // if provider rejects sampling on reasoning variants
+  requiresThinkingReconciliation: false,
+},
+// src/config/providers.ts — base URL + key pool + relay tier
+'volcengine': {
+  baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+  apiKeyEnv: 'VOLCENGINE_API_KEY',
+  relayPool: 'RELAY_POOL_URLS',     // or omit for direct-only
+},
+```
+
+Add any new env var to `.env.example` with a comment and safe default.
+
+**Step 2 — Translator branch (`src/translator/`)**
+
+- OpenAI-compatible JSON → no new translator; `openai-to-*` path handles it — set `stripParams` correctly.
+- Anthropic Messages (`system` top-level, `tool_result` adjacency) → extend `src/translator/openai-to-claude.ts`, reuse `sanitize.ts` + `tools.ts` (`enforceToolResultAdjacency`, orphan repair).
+- Gemini `generateContent` (`systemInstruction`, `thought: true`) → extend `src/translator/openai-to-gemini.ts`, ensure consecutive same-role merge and `thoughtSignature` caching.
+- Reasoning involved → touch `src/normalizer/thinking.ts` (`reasoning_effort` ↔ `budget_tokens` per the budget table, reconcile `max_tokens >= budget + 1024`).
+
+Translators are pure functions — input JSON → output JSON, no I/O. Add unit tests alongside.
+
+**Step 3 — Relay / transport map (`src/router/transport.ts`)**
+
+- Fast path (<~20 s estimated) → Vercel relay pool; ensure `proxyFetch` sends `x-relay-auth` + `x-relay-target` with `isPrivateHostname` guard.
+- Long-context / heavy reasoning (>60 s) → mark for VPS/direct tier to bypass the 25 s relay watchdog (`RELAY_TIMEOUT_MS = 25_000`).
+- No code change if an existing tier fits — just configure the model entry to select the tier via `providers.ts`.
+
+**Step 4 — Tests (Vitest, no live keys needed)**
+
+```bash
+pnpm test src/translator/openai-to-claude.test.ts   # new branch
+pnpm test src/normalizer/clamp.test.ts                # new maxOutput
+pnpm test src/router/circuitBreaker.test.ts           # if new error code
+```
+
+Required coverage for a provider PR (all via `app.request()` + mocked `fetch`):
+
+- [ ] **Clamp test** — `max_tokens: 999999` clamps to the provider ceiling (`32768` for Kimi, `131072` for OpenCode, `200000` for CommandCode).
+- [ ] **Sanitize test** — unsupported params stripped (e.g. `temperature` on o1/DeepSeek).
+- [ ] **Translation test** — OpenAI → provider wire shape round-trips (messages, tools, system, media parts).
+- [ ] **Tool adjacency test** — `assistant(tool_calls) → user(tool_result)` holds; orphans degrade to user text.
+- [ ] **Integration test** — `app.request('/v1/chat/completions', { model: 'your/new-model' })` returns `200` with mocked upstream.
+
+Open the PR with: registry diff + translator diff + transport tier note + test evidence. Link the `research/` doc that justifies the clamp value.
+
+---
+
+## 9. Guardrails
+
+- Keep `hono` + `zod` minimal — no framework drift.
+- No mutation outside `normalizer/` — every param change is registry-driven and tested.
+- Intelligence sync is advisory; router falls back to static `MODEL_REGISTRY` if sync fails.
+- Relay is authenticated (`x-relay-auth` 32B hex) and SSRF-hardened (`isPrivateHostname` + protocol allowlist) on every deploy.
+- Vercel relays are bounded (25 s TTFT watchdog) with direct/VPS failover before the platform timeout.
+- Do not commit `.env`, `*.log`, or `reference/`/`research/` artifacts — all gitignored. Fresh clone → `cp .env.example .env && pnpm install && env -u AUTH_TOKENS pnpm test` must be green.
+
+---
+
+## Further reading
+
+- `docs/README.md` — landing page, features, quick start, curl examples, project structure.
+- `docs/ARCHITECTURE.md` — pipeline diagram, module table, data-flow invariants, phases P0–P6.
+- Private (repo access only, gitignored): `devdocs/README.md` (doc index + research index + agent context guide), `devdocs/SETUP.md` (full setup + provider checklist), `devdocs/02-ROADMAP.md` (7-phase plan with exit criteria), `devdocs/04-TESTING.md` (full test matrix), plus `research/` (12 synthesis docs) and `reference/` (9 upstream checkouts).
+
+License: MIT — see `LICENSE`.
+
