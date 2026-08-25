@@ -290,7 +290,7 @@ describe('P1 — ingress.test.ts (roadmap §P1-T09)', () => {
   })
 
   // ——— stream stub ———
-  it('stream:true → 501 text/event-stream with data:[DONE]', async () => {
+  it('stream:true → 200 text/event-stream with data:[DONE] (P4 streaming engine)', async () => {
     const app = createApp()
     const res = await app.request('/v1/chat/completions', {
       method: 'POST',
@@ -304,7 +304,7 @@ describe('P1 — ingress.test.ts (roadmap §P1-T09)', () => {
         stream: true,
       }),
     })
-    expect(res.status).toBe(501)
+    expect(res.status).toBe(200)
     expect(res.headers.get('content-type')).toMatch(/text\/event-stream/)
     const text = await res.text()
     expect(text).toContain('data: [DONE]')

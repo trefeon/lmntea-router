@@ -114,7 +114,7 @@ describe('P1 — Ingress & Auth (legacy p1.test.ts, now 501/422)', () => {
     expect(res.headers.get('x-request-id')).toBeTruthy()
   })
 
-  it('POST /v1/chat/completions stream → 501 text/event-stream with [DONE]', async () => {
+  it('POST /v1/chat/completions stream → 200 text/event-stream with [DONE] (P4)', async () => {
     const app = createApp()
     const res = await app.request('/v1/chat/completions', {
       method: 'POST',
@@ -128,7 +128,7 @@ describe('P1 — Ingress & Auth (legacy p1.test.ts, now 501/422)', () => {
         stream: true,
       }),
     })
-    expect(res.status).toBe(501)
+    expect(res.status).toBe(200)
     expect(res.headers.get('content-type')).toMatch(/text\/event-stream/)
     const text = await res.text()
     expect(text).toContain('data: [DONE]')

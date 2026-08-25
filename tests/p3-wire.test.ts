@@ -134,9 +134,9 @@ describe('P3 — wire P2 normalizer into routes (p3-wire)', () => {
         stream: true,
       }),
     })
-    expect(res.status).toBe(501)
+    expect(res.status).toBe(200)
     expect(res.headers.get('content-type')).toMatch(/text\/event-stream/)
-    // stream stub also sets clamped header before returning
+    // stream also sets clamped header before returning (P4 engine)
     expect(res.headers.get('x-clamped-max-tokens')).toBe('131072')
   })
 })
