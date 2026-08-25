@@ -1,0 +1,25 @@
+# Local dev docs & reference materials
+/reference/
+/devdocs/
+/research/
+
+# OS junk
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+# Logs & temp
+*.log
+tmp/
+
+# Build & deps
+node_modules/
+dist/
+coverage/
+.turbo/
+
+# Env lock (keep pnpm-lock.yaml tracked, so not ignored)

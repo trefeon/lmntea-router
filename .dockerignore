@@ -1,0 +1,12 @@
+node_modules
+dist
+.git
+.gitignore
+devdocs
+research
+reference
+*.log
+.env
+.env.local
+coverage
+.turbo
