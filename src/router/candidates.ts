@@ -24,7 +24,12 @@ export function primaryProviderFor(model: string): string {
 function providerUrl(provider: string, pathSuffix: string): string | null {
   const spec = PROVIDERS[provider]
   if (!spec) return null
-  return `${spec.baseUrl.replace(/\/$/, '')}${pathSuffix}`
+  const base = spec.baseUrl.replace(/\/$/, '')
+  // Some registries store full endpoint path in baseUrl (e.g.
+  // https://api.aimlapi.com/v1/chat/completions, https://api.perplexity.ai/chat/completions).
+  // Don't double the suffix — return base as-is if it already ends with pathSuffix.
+  if (base.endsWith(pathSuffix)) return base
+  return `${base}${pathSuffix}`
 }
 
 /**
@@ -81,7 +86,9 @@ export function buildUpstreamCandidates(
   const primaryBase = (
     primarySpec?.baseUrl ?? 'https://opencode.ai/zen/v1'
   ).replace(/\/$/, '')
-  const primaryUrl = `${primaryBase}${pathSuffix}`
+  const primaryUrl = primaryBase.endsWith(pathSuffix)
+    ? primaryBase
+    : `${primaryBase}${pathSuffix}`
   const alts = alternateProvidersFor(model, wireFormat)
   if (alts.length === 0) {
     return [

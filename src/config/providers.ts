@@ -16,6 +16,13 @@ export interface ProviderSpec {
 }
 
 export const PROVIDERS: Record<string, ProviderSpec> = {
+  ai21: {
+    // source: reference/OmniRoute/open-sse/config/providers/registry/ai21/index.ts:5
+    baseUrl: 'https://api.ai21.com/studio/v1/chat/completions',
+    apiKeyEnv: 'AI21_API_KEY',
+    timeoutMs: 30000,
+    format: 'openai',
+  },
   aimlapi: {
     // source: reference/OmniRoute/open-sse/config/providers/registry/aimlapi/index.ts:4
     baseUrl: 'https://api.aimlapi.com/v1/chat/completions',
