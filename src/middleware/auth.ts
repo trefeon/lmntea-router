@@ -14,6 +14,21 @@ export function isAuthRequired(): boolean {
 
 export async function authMiddleware(c: Context<Env>, next: Next) {
   if (c.req.path.startsWith('/health')) return next()
+  // Static dashboard assets (serveStatic) carry no secrets — gating them would
+  // 401 the UI in prod single-binary mode. Narrow allowlist: only vite build
+  // output (/ index.html, /assets/*, favicon). Unknown paths keep 401 behavior.
+  const p = c.req.path
+  if (
+    c.req.method === 'GET' &&
+    !p.startsWith('/v1') &&
+    !p.startsWith('/health') &&
+    (p === '/' ||
+      p === '/index.html' ||
+      p.startsWith('/assets/') ||
+      p === '/favicon.ico')
+  ) {
+    return next()
+  }
   if (!isAuthRequired()) return next()
 
   const raw = (process.env.AUTH_TOKENS ?? process.env.API_KEYS ?? '').trim()

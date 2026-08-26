@@ -135,7 +135,9 @@ export function createBreakerState(): BreakerState {
     failures: [],
     state: 'CLOSED',
     openedAt: null,
-    cooldownMs: COOLDOWN_MS,
+    // 0 → first trip escalates via getNextCooldownMs(0) = COOLDOWN_MS (60s);
+    // subsequent trips double: 120s, 240s, 300s cap.
+    cooldownMs: 0,
   }
 }
 
@@ -206,13 +208,20 @@ export function recordFailure(state: BreakerState, now: number): BreakerState {
   const pruned = pruneFailures(state.failures, now)
   const nextFailures = [...pruned, now]
 
-  if (shouldTrip(nextFailures, now) && state.state === 'CLOSED') {
-    const nextCooldown =
-      state.openedAt === null
-        ? COOLDOWN_MS
-        : getNextCooldownMs(state.cooldownMs)
-    const capped =
-      nextCooldown > COOLDOWN_CAP_MS ? COOLDOWN_CAP_MS : nextCooldown
+  // Re-arm an OPEN breaker whose cooldown already elapsed — callers that skip
+  // maybeClose (canAttempt-only polling) must still be able to re-trip.
+  const effective =
+    state.state === 'OPEN' &&
+    !isCooldownActive(state.openedAt, state.cooldownMs, now)
+      ? ({ ...state, state: 'CLOSED', openedAt: null } as BreakerState)
+      : state
+
+  if (shouldTrip(nextFailures, now) && effective.state === 'CLOSED') {
+    // cooldownMs carries the previous period's cooldown; escalate 60→120→240→300.
+    const capped = Math.min(
+      getNextCooldownMs(effective.cooldownMs),
+      COOLDOWN_CAP_MS,
+    )
     return {
       failures: nextFailures,
       state: 'OPEN',
@@ -221,16 +230,15 @@ export function recordFailure(state: BreakerState, now: number): BreakerState {
     }
   }
 
-  // already open — keep open, update failures and keep cooldown
-  if (state.state === 'OPEN') {
+  if (effective.state === 'OPEN') {
     return {
-      ...state,
+      ...effective,
       failures: nextFailures,
     }
   }
 
   return {
-    ...state,
+    ...effective,
     failures: nextFailures,
   }
 }

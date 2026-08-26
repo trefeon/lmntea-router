@@ -1024,15 +1024,6 @@ async function main(): Promise<void> {
       }
       format = 'gemini'
     }
-    if (lk === 'azure' && !baseUrl) {
-      baseUrl = 'https://azure.example.com/v1'
-      // keep citation from 9router azure.js:2 (baseUrl empty) + inferred
-      if (!citations.some((c) => c.includes('azure'))) {
-        citations.push(
-          'reference/9router/open-sse/providers/registry/azure.js:2 (baseUrl placeholder)',
-        )
-      }
-    }
     if (lk === 'alibaba' && !baseUrl) {
       baseUrl =
         'https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions'
@@ -1045,7 +1036,7 @@ async function main(): Promise<void> {
     }
     const prov: GeneratedProvider = {
       id: pid,
-      baseUrl: baseUrl || `https://${pid}.example.com/v1`,
+      baseUrl: baseUrl && !baseUrl.includes('example.com') ? baseUrl : '',
       apiKeyEnv: providerApiKeyEnv(pid),
       timeoutMs: 30_000,
       relay: isRelayProvider(pid, category, passthrough) ? true : undefined,
@@ -1447,6 +1438,21 @@ async function main(): Promise<void> {
       )
     }
     return
+  }
+
+  // Drop providers without a real baseUrl (placeholder/example.com or empty)
+  // and their orphaned models — never ship invented endpoints.
+  for (const [pk, pv] of Array.from(mergedProviders.entries())) {
+    if (pv.baseUrl.length === 0 || pv.baseUrl.includes('example.com')) {
+      console.warn(
+        `[import-provider] skipping provider ${pk}: no real baseUrl ('${pv.baseUrl}')`,
+      )
+      mergedProviders.delete(pk)
+      for (const mk of Array.from(mergedModels.keys())) {
+        if (mergedModels.get(mk)!.provider.toLowerCase() === pk)
+          mergedModels.delete(mk)
+      }
+    }
   }
 
   // Write models.ts sorted

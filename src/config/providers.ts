@@ -1,3 +1,5 @@
+import { getModelSpec } from './models.js'
+
 export interface ProviderSpec {
   baseUrl: string
   apiKeyEnv: string
@@ -28,12 +30,10 @@ export const PROVIDERS: Record<string, ProviderSpec> = {
     format: 'claude',
   },
   bedrock: {
-    // source: reference/OmniRoute/open-sse/config/providers/registry/bedrock/index.ts:4 | reference/OmniRoute/open-sse/config/providers/registry/bedrock/index.ts:4
-    baseUrl: 'https://bedrock.example.com/v1',
+    // source: AWS Bedrock OpenAI-compatible endpoint — https://bedrock-runtime.<region>.amazonaws.com/openai/v1 (AWS docs, us-east-1 default; registry bedrock/index.ts:4 has no static baseUrl)
+    baseUrl: 'https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1',
     apiKeyEnv: 'AWS_BEARER_TOKEN_BEDROCK',
-    relay: true,
-    timeoutMs: 30000,
-    passthroughModels: true,
+    timeoutMs: 30_000,
     format: 'openai',
   },
   deepseek: {
@@ -200,7 +200,15 @@ export const PROVIDERS: Record<string, ProviderSpec> = {
 export function getProviderForModel(id: string): ProviderSpec | undefined {
   const provider = id.split('/')[0]
   if (provider === undefined || provider.length === 0) return undefined
-  return PROVIDERS[provider]
+  if (PROVIDERS[provider] !== undefined) return PROVIDERS[provider]
+  // Unprefixed alias ids (e.g. 'kimi-k2.7', 'MiniMax-M3') — resolve via the
+  // registry entry's `provider` field instead of falling back to a wrong upstream.
+  const spec = getModelSpec(id)
+  if (spec !== undefined) {
+    const alias = PROVIDERS[spec.provider]
+    if (alias !== undefined) return alias
+  }
+  return undefined
 }
 
 export function isRelayProvider(id: string): boolean {

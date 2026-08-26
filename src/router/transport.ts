@@ -60,7 +60,33 @@ export function isPrivateHostname(host: string): boolean {
 
   let h = withoutBrackets
   const hasDoubleColon = withoutBrackets.includes('::')
-  const isIPv6Like = withoutBrackets.includes(':')
+  let isIPv6Like = withoutBrackets.includes(':')
+  // Normalize IPv4-mapped IPv6 (::ffff:a.b.c.d or canonical hex ::ffff:aabb:ccdd)
+  // back to dotted IPv4 so every RFC1918/loopback/link-local check below applies.
+  // WHATWG URL canonicalizes http://[::ffff:169.254.169.254]/ to ::ffff:a9fe:a9fe.
+  const mappedPrefix = '::ffff:'
+  if (h.startsWith(mappedPrefix)) {
+    const tail = h.slice(mappedPrefix.length)
+    const hexParts = tail.split(':')
+    if (hexParts.length === 2 && !tail.includes('.')) {
+      const hi = Number.parseInt(hexParts[0] ?? '', 16)
+      const lo = Number.parseInt(hexParts[1] ?? '', 16)
+      if (
+        Number.isFinite(hi) &&
+        Number.isFinite(lo) &&
+        hi >= 0 &&
+        hi <= 0xffff &&
+        lo >= 0 &&
+        lo <= 0xffff
+      ) {
+        h = `${hi >> 8}.${hi & 0xff}.${lo >> 8}.${lo & 0xff}`
+        isIPv6Like = false
+      }
+    } else if (hexParts.length === 1 && tail.includes('.')) {
+      h = tail
+      isIPv6Like = false
+    }
+  }
   const isUlaOrLinkLocalStart =
     withoutBrackets.startsWith('fc') ||
     withoutBrackets.startsWith('fd') ||

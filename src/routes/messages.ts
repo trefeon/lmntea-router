@@ -41,6 +41,7 @@ export function mountMessages(app: Hono<Env>) {
     let clampedHeader: string | undefined
     let strippedHeader: string | undefined
     let normalizedHeader: string | undefined
+    let normalizedRec: Record<string, unknown> | null = null
     if (spec) {
       let bodyRec: Record<string, unknown> = {
         ...(data as unknown as Record<string, unknown>),
@@ -62,6 +63,7 @@ export function mountMessages(app: Hono<Env>) {
       if (typeof nt === 'number') {
         normalizedHeader = String(nt)
       }
+      normalizedRec = bodyRec
     }
     if (data.stream) {
       // P4 streaming engine — Anthropic SSE (event: ...\ndata: ...\n\n), hermetic via app.request()
@@ -81,12 +83,15 @@ export function mountMessages(app: Hono<Env>) {
 
       const relayUrls = getDefaultRelayPool()
       const upstreamUrl = buildUpstreamUrl(data.model)
+      // Ship the normalized body (sanitized/clamped/thinking-reconciled),
+      // mirroring chat.ts — headers must reflect what actually goes upstream.
+      const norm = (normalizedRec ?? data) as Record<string, unknown>
       const upstreamBody = JSON.stringify({
         model: data.model,
-        messages: data.messages,
-        max_tokens: data.max_tokens,
-        system: (data as unknown as Record<string, unknown>).system,
-        tools: (data as unknown as Record<string, unknown>).tools,
+        messages: norm.messages,
+        max_tokens: norm.max_tokens ?? data.max_tokens,
+        system: norm.system,
+        tools: norm.tools,
       })
 
       let upstreamResponse: Response | null = null

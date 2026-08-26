@@ -21,13 +21,18 @@ function buildEnrichedEntry(
     if (!synced) synced = snapshot.get(id.toLowerCase())
   }
 
-  const contextLength = synced?.contextLength ?? spec?.contextWindow ?? 128_000
+  // Authoritative static MODEL_REGISTRY wins over the advisory OpenRouter
+  // snapshot for registry-known ids — never advertise unverified remote caps
+  // over audited verbatim values.
+  const contextLength = spec?.contextWindow ?? synced?.contextLength ?? 128_000
   const maxCompletionTokens =
-    synced?.maxCompletionTokens ?? spec?.maxOutputTokens ?? 8192
+    spec?.maxOutputTokens ?? synced?.maxCompletionTokens ?? 8192
   const inputModalities = synced?.inputModalities ?? ['text']
   const outputModalities = synced?.outputModalities ?? ['text']
   const supportedParameters =
-    synced?.supportedParameters ?? (spec ? [...spec.supportedParams] : [])
+    spec && spec.supportedParams.size > 0
+      ? [...spec.supportedParams]
+      : (synced?.supportedParameters ?? [])
 
   const pricing = synced?.pricing
     ? {
