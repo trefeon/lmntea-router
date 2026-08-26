@@ -140,6 +140,13 @@ export const PROVIDERS: Record<string, ProviderSpec> = {
     passthroughModels: true,
     format: 'openai',
   },
+  perplexity: {
+    // source: reference/9router/open-sse/providers/registry/perplexity.js:2
+    baseUrl: 'https://api.perplexity.ai/chat/completions',
+    apiKeyEnv: 'PERPLEXITY_API_KEY',
+    timeoutMs: 30000,
+    format: 'openai',
+  },
   orcarouter: {
     // source: reference/OmniRoute/open-sse/config/providers/registry/orcarouter/index.ts:baseUrl
     baseUrl: 'https://api.orcarouter.ai/v1',
