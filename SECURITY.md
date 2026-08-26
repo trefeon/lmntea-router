@@ -3,8 +3,8 @@
 ## Supported Versions
 
 | Version | Supported |
-|---------|-----------|
-| 0.1.x   | Yes       |
+| 0.2.x   | Yes       |
+| 0.1.x   | Security fixes only |
 
 ## Reporting a Vulnerability
 
@@ -28,11 +28,23 @@ areas:
 |---|--------|------------|
 | T1 | **Open proxy abuse** — public relay endpoint used as unauthenticated proxy | `x-relay-auth` shared secret (32-byte random, 64 hex chars via `RELAY_AUTH_SECRET`); requests without a matching header are rejected with `401 Unauthorized` |
 | T2 | **SSRF** — relay coerced to fetch private / metadata endpoints | `isPrivateHostname()` blocklist (localhost, `127.0.0.1`, `::1`, `169.254.169.254`, `10.0.0.0/8`, `192.168.0.0/16`, `172.16.0.0/12`, `fc`/`fd` ULA) + `http:`/`https:` protocol allowlist + `new URL()` parsing; rejected with `403 Forbidden` |
-| T3 | **API key leak** — keys exposed in logs, git history, or API responses | Keys stored only as `SHA-256` hashes at rest; logs and API responses use masked values; `.env` is gitignored; compromised keys can be hot-revoked without restart |
-| T4 | **Rate abuse** — single key floods the gateway | Token bucket rate limit (60 requests/minute per key hash); exceeded requests receive `429 Too Many Requests` with `Retry-After` |
+| T3 | **API key leak** — keys exposed in logs, git history, or API responses | Keys stored only as `SHA-256` hashes at rest; comparison is constant-time (`timingSafeEqual` over SHA-256 digests, so request timing leaks nothing about token content or length); logs and API responses use masked values; `.env` is gitignored; compromised keys can be hot-revoked without restart |
 
 Out of scope for the core gateway: OAuth2/OIDC/SAML, mTLS, and KMS/Vault
 integration. These may be added as opt-in features if multi-tenancy is required.
+
+### `allowPrivate` — opt-in loopback exception (outbound only)
+
+Local providers served on loopback (e.g. **ollama** at `http://localhost:11434`) are registered
+with `allowPrivate: true` in `src/config/providers.ts`. This opt-in bypasses **only** the outbound
+private-hostname check for that one provider's dispatch. It does not weaken anything else:
+
+- The `http:`/`https:` protocol allowlist still applies to every request.
+- Credentials embedded in the target URL (`user:pass@host`) are still rejected.
+- Inbound relay target validation (`assertRelayTarget`) stays fully strict — a relayed fetch
+  can never be pointed at a private/metadata address, regardless of any provider's `allowPrivate`.
+- The flag is code-only (no env var, no request header can set it); enabling it for a new
+  provider requires a reviewed change to `providers.ts`.
 
 ## Security Best Practices for Operators
 

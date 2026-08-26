@@ -2,7 +2,7 @@
 
 Thanks for contributing — every change should keep the gateway boring, sharp, and under 2,500 LOC.
 
-> **Stack:** `TypeScript 5.6 + Hono 4.x + Bun 1.2 (Node 20 fallback) + Vitest 2.x + Zod 3.x + tsup + tsx + Biome + pnpm`
+> **Stack:** `TypeScript 5.9 + Hono 4.13 + Bun 1.4 (Node >=20) + Vitest 2.x + Zod 3.25 + tsup + tsx + Biome + pnpm`
 
 ---
 
@@ -12,7 +12,7 @@ Thanks for contributing — every change should keep the gateway boring, sharp, 
 
 | Requirement | Version | Check | Notes |
 |---|---|---|---|
-| **Bun** (preferred) | `1.2+` | `bun --version` | Primary runtime — Hono + Web Streams natively |
+| **Bun** (preferred) | `1.4+` | `bun --version` | Primary runtime — Hono + Web Streams natively |
 | **Node** (fallback) | `20+` | `node --version` | Used if Bun is unavailable; `tsx` provides the same dev loop |
 | **pnpm** | `9+` | `pnpm --version` | CI uses `pnpm`; `npm`/`yarn` work but not tested in CI |
 | **Git** | any | `git --version` | |
@@ -47,13 +47,14 @@ Available dev scripts:
 | `pnpm run dev:node` | `tsx watch src/index.ts` | Node fallback |
 | `pnpm build` | `tsup src/index.ts --format esm --dts --clean` | Produces `dist/` |
 | `pnpm run check` | `biome check . && tsc --noEmit` | Lint + typecheck |
-| `pnpm test` | `vitest run` | Unit + integration (no ports) |
+| `pnpm test` | `vitest run` | Unit + integration (no ports) — hermetic gate: `env -u AUTH_TOKENS pnpm test` |
+| `pnpm test:e2e` | `vitest run tests/e2e/smoke.test.ts` | Hermetic end-to-end smoke via `app.request()` |
 
 ### Verify
 
 ```bash
 curl http://localhost:3000/health
-# {"status":"ok","version":"0.1.0"}
+# {"status":"ok","version":"0.2.0"}
 
 # authenticated probe (replace with your AUTH_TOKENS value)
 curl http://localhost:3000/v1/models -H "Authorization: Bearer sk-lmntea-dev-1"
@@ -110,7 +111,7 @@ docs: align env table with .env.example (AUTH_TOKENS)
 
 1. **Branch** from `main` with the naming above.
 2. **Code** — follow the canonical module tree in `docs/ARCHITECTURE.md` (same tree as `src/`). Don't invent a new top-level folder without an ADR.
-3. **Test** — `pnpm test` must pass. New behavior needs a test (see `docs/SETUP.md` § Testing). Translators are pure functions — test input JSON → output JSON, no network.
+3. **Test** — `pnpm test` must pass (hermetic gate: `env -u AUTH_TOKENS pnpm test` — currently 40 files / 568 tests). New behavior needs a test (see `docs/SETUP.md` § Testing). Translators are pure functions — test input JSON → output JSON, no network.
 4. **Lint & typecheck** — `pnpm run check` (Biome + `tsc --noEmit`) must be green. Run `pnpm run lint:fix` to auto-fix.
 5. **Docs** — if you add a model, provider, or env var, update `docs/SETUP.md` env table and `.env.example` (same names, same defaults).
 6. **Open PR** against `main`:
@@ -118,11 +119,24 @@ docs: align env table with .env.example (AUTH_TOKENS)
    - Description: what, why, and test evidence (`pnpm test` output or a `curl` transcript). Link the `research/` or `reference/` source if the change ports a known pattern.
    - Keep PRs focused — one provider or one pillar per PR.
 7. **Review** — address comments, keep the branch rebased. Squash-merge is default.
-8. **CI** — GitHub Actions runs `check` + `test` + `build:check` on every PR. Green CI is required to merge.
+8. **CI** — GitHub Actions runs `typecheck → lint → test → build` on Node 20 / pnpm 9 for every push; green CI is required to merge.
 
-### Adding a provider
+### Per-provider PR cadence
 
-Follow the 4-step checklist in `docs/SETUP.md` § "Where to Add a New Provider" — registry → translator → transport tier → tests. Open the PR with all four steps done; no shims.
+One provider = one PR. Generate the registry entries with the importer in append-only mode
+(idempotent — safe to re-run; skips placeholders and never touches existing entry bodies):
+
+```bash
+pnpm exec tsx scripts/import-provider.ts --provider <provider-id> --source all --dry-run  # preview
+pnpm exec tsx scripts/import-provider.ts --provider <provider-id> --source all --merge    # append-only write
+```
+
+Then run `pnpm typecheck && env -u AUTH_TOKENS pnpm test`, commit the generated models/providers/tests,
+and open the PR with the dry-run summary as evidence.
+
+### Adding a provider manually
+
+Follow the checklist in `docs/SETUP.md` § "Where to Add a New Provider" — registry → translator → transport tier → tests. Open the PR with all four steps done; no shims.
 
 ---
 

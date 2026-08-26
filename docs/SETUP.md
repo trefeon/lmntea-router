@@ -1,7 +1,7 @@
 # Setup — lmntea-router
 
 > **Time:** <5 minutes from zero to `curl` 200.
-> **Stack (decided):** `TypeScript 5.6 + Hono 4.x + Bun 1.2 (Node 20 fallback) + Vitest 2.x + Zod 3.x + tsup + tsx + Biome + pnpm`
+> **Stack (decided):** `TypeScript 5.9 + Hono 4.13 + Bun 1.4 (Node >=20) + Vitest 2.x + Zod 3.25 + tsup + tsx + Biome + pnpm`
 
 This guide is for a new human contributor **or** an AI agent bootstrapping the repo locally. Every command is copy-pasteable on Windows (Git Bash / PowerShell), macOS, and Linux. For the request pipeline and module map see [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md).
 
@@ -11,7 +11,7 @@ This guide is for a new human contributor **or** an AI agent bootstrapping the r
 
 | Requirement | Version | Check | Notes |
 |---|---|---|---|
-| **Bun** (preferred) | `1.2+` | `bun --version` | Primary runtime — Hono + Web Streams natively. https://bun.sh |
+| **Bun** (preferred) | `1.4+` | `bun --version` | Primary runtime — Hono + Web Streams natively. https://bun.sh |
 | **Node** (fallback) | `20+` | `node --version` | Used if Bun is unavailable; `tsx` provides the same dev loop |
 | **pnpm** | `9+` | `pnpm --version` | Package manager — `npm`/`yarn` work but CI uses `pnpm` |
 | **Git** | any | `git --version` | |
@@ -74,10 +74,53 @@ Edit `.env`. The table below is authoritative and matches `.env.example` — kee
 
 \* `AUTH_TOKENS` is optional for local dev so tests stay hermetic. **Set it in any shared or deployed environment.** When set, every `POST /v1/chat/completions`, `POST /v1/messages`, and `GET /v1/models` requires a matching token.
 
+### Upstream provider keys
+
+Each provider reads its key from one env var (`apiKeyEnv` in `src/config/providers.ts`). **All are
+optional** — set only the ones you route to. Most follow `PROVIDER.toUpperCase()_API_KEY`; the
+exceptions are marked.
+
+| Provider (`model/` prefix) | Env var | Notes |
+|---|---|---|
+| `opencode/` | `OPENCODE_API_KEY` | exception to the pattern |
+| `commandcode/` | `COMMANDCODE_API_KEY` | |
+| `openai/` | `OPENAI_API_KEY` | |
+| `anthropic/` | `ANTHROPIC_API_KEY` | |
+| `gemini/` | `GEMINI_API_KEY` | |
+| `deepseek/` | `DEEPSEEK_API_KEY` | |
+| `moonshot/` | `MOONSHOT_API_KEY` | |
+| `zai/` | `ZAI_API_KEY` | Anthropic-wire endpoint |
+| `minimax/` | `MINIMAX_API_KEY` | |
+| `volcengine/` | `VOLCENGINE_API_KEY` | |
+| `xiaomi-mimo/` | `XIAOMI_API_KEY` | exception to the pattern |
+| `bedrock/` | `AWS_BEARER_TOKEN_BEDROCK` | AWS SigV4/bearer, not a `<PROVIDER>_API_KEY` |
+| `alibaba/` | `ALIBABA_API_KEY` | |
+| `vertex/` | `VERTEX_API_KEY` | |
+| `cohere/` | `COHERE_API_KEY` | |
+| `mistral/` | `MISTRAL_API_KEY` | |
+| `perplexity/` | `PERPLEXITY_API_KEY` | |
+| `ollama/` | _(none)_ | local loopback server — `allowPrivate`, no key |
+| `openrouter/` | `OPENROUTER_API_KEY` | also enables dynamic model passthrough |
+| `requesty/` | `REQUESTY_API_KEY` | |
+| `orcarouter/` | `ORCAROUTER_API_KEY` | |
+| `aihorde/` | `AIHORDE_API_KEY` | |
+| `together/` | `TOGETHER_API_KEY` | |
+| `fireworks/` | `FIREWORKS_API_KEY` | |
+| `groq/` | `GROQ_API_KEY` | |
+| `cerebras/` | `CEREBRAS_API_KEY` | |
+| `nvidia/` | `NVIDIA_API_KEY` | |
+| `nebius/` | `NEBIUS_API_KEY` | |
+| `hyperbolic/` | `HYPERBOLIC_API_KEY` | |
+| `siliconflow/` | `SILICONFLOW_API_KEY` | |
+| `deepinfra/` | `DEEPINFRA_API_KEY` | |
+| `huggingface/` | `HUGGINGFACE_API_KEY` | |
+
+(32 providers; azure is deferred until env-driven base URLs land.)
+
 **Key invariants:**
 
 - `AUTH_TOKENS` is the **gateway's own** auth — harnesses send `Authorization: Bearer <token>` or `x-api-key: <token>`. It is not an upstream provider key.
-- Upstream provider keys (e.g., `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) live only in `src/config/providers.ts` and are never forwarded to the client.
+- Upstream provider keys are read from the env var named by `apiKeyEnv` for each provider in `src/config/providers.ts` (see table above). They are never forwarded to the client and never logged raw.
 - `RELAY_AUTH_SECRET` must match the `x-relay-auth` your relay validates. All relay fetches are guarded by `isPrivateHostname` (blocks `localhost`, `127.0.0.1`, `::1`, `169.254.169.254`, `10.0.0.0/8`, `192.168.0.0/16`, `172.16.0.0/12`, `fc`/`fd` ULA) and an `http:`/`https:` allowlist.
 - No `.env` committed — `.env` and `.env.*` are gitignored. CI injects secrets via env vars.
 
@@ -87,6 +130,11 @@ Edit `.env`. The table below is authoritative and matches `.env.example` — kee
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 # → 64-char hex string — paste into RELAY_AUTH_SECRET in .env and in the relay deployment
 ```
+
+> **Dashboard dev note:** the frontend lives in `apps/web/` (Vite + React). Its dev server proxies
+> `/v1` and `/health` to `http://localhost:8787`, so run the gateway on that port while working on
+> the UI: `PORT=8787 pnpm dev`. In production the built SPA is served by Hono itself
+> (`serveStatic` from `apps/web/dist`) — one binary, no separate web server.
 
 ---
 
@@ -100,7 +148,7 @@ bun run dev       # same, via Bun
 
 Expected output:
 
-```
+```text
 [lmntea-router] listening on http://localhost:3000
   POST /v1/chat/completions
   POST /v1/messages
@@ -108,16 +156,18 @@ Expected output:
   GET  /health
 ```
 
+`/health` reports `"version":"0.2.0"`.
+
 Sanity check:
 
 ```bash
 curl http://localhost:3000/health
-# {"status":"ok","version":"0.1.0"}
+# {"status":"ok","version":"0.2.0"}
 
 # authenticated probe — replace token with one entry from AUTH_TOKENS
 curl http://localhost:3000/v1/models \
   -H "Authorization: Bearer sk-lmntea-dev-1" | jq '.data | length'
-# e.g. 8  (static registry count — enriched when intelligence sync is on)
+# e.g. 114  (static registry count — more appear once OpenRouter intelligence sync enriches /v1/models)
 
 # without auth when AUTH_TOKENS is set → 401
 curl http://localhost:3000/v1/models
@@ -155,16 +205,14 @@ curl -N http://localhost:3000/v1/messages \
 ## 5. Tests
 
 ```bash
-pnpm test           # 21 suites, 327 tests — no ports, no real network
-pnpm run test:watch # watch mode
-pnpm run test:coverage  # coverage report (threshold 85% — enforced in vitest.config.ts)
+pnpm test                        # 40 files, 568 tests — no ports, no real network
+env -u AUTH_TOKENS pnpm test     # hermetic CI gate — must pass with secrets stripped
+pnpm run test:watch              # watch mode
+pnpm run test:coverage           # coverage report (threshold 85% — enforced in vitest.config.ts)
+pnpm run test:e2e                # hermetic end-to-end smoke via app.request() (tests/e2e/smoke.test.ts)
 ```
 
-With real upstream keys (opt-in, never in CI):
-
-```bash
-E2E=1 pnpm test     # enables live upstream probes when provider keys are set
-```
+Tests never hit real upstreams — unit/integration mocks `fetch` per test; the e2e smoke runs in-memory too.
 
 Test style — in-memory HTTP, no `server.listen()`:
 
@@ -191,7 +239,7 @@ test('clamps max_tokens to model ceiling', async () => {
 pnpm run lint:fix          # Biome format + lint (auto-fix)
 pnpm exec biome check .    # check only
 pnpm exec tsc --noEmit     # types
-pnpm run build             # tsup → dist/index.js ~60 KB + dist/index.js.map ~160 KB + dist/index.d.ts 370 B
+pnpm run build             # tsup → dist/index.js ~190 KB (+ sourcemap + d.ts)
 pnpm run check             # biome + tsc (CI gate)
 pnpm run start             # node dist/index.js (after build)
 ```
@@ -208,6 +256,15 @@ Adding a provider (e.g., a new OpenAI-compatible endpoint or a Gemini/Anthropic-
 
 ### Step 1 — Registry entry (`src/config/models.ts` + `src/config/providers.ts`)
 
+**Preferred:** generate the entries with the importer in append-only `--merge` mode (idempotent,
+skips placeholders, never rewrites existing entry bodies):
+
+```bash
+pnpm exec tsx scripts/import-provider.ts --provider example --source all --dry-run  # preview
+pnpm exec tsx scripts/import-provider.ts --provider example --source all --merge    # append-only write
+```
+
+**Manual alternative** — one entry per model id you will route to:
 ```ts
 // src/config/models.ts — one entry per model id you will route to
 'example/new-model': {
@@ -246,9 +303,9 @@ Every translator is a **pure function** — input JSON → output JSON, no I/O. 
 ### Step 4 — Tests (`vitest` — no project-wide build needed)
 
 ```bash
-pnpm test src/translator/openai-to-claude.test.ts
-pnpm test src/normalizer/clamp.test.ts
-pnpm test src/router/circuitBreaker.test.ts
+pnpm test tests/translator/openai-to-claude.test.ts
+pnpm test tests/normalizer/clamp.test.ts
+pnpm test tests/router/circuitBreaker.test.ts
 ```
 
 Required coverage for a new provider PR:
@@ -272,7 +329,7 @@ Open the PR with: registry diff + translator diff + transport tier note + test e
 | `400 max_tokens illegal: [1,131072]` | New model missing clamp entry | Add `maxOutputTokens` ceiling in `src/config/models.ts` |
 | `504 FUNCTION_INVOCATION_TIMEOUT` via relay | Generation >25 s on Vercel | Route that model via direct/VPS tier in `src/router/transport.ts` |
 | Stream hangs, no `: keepalive` | Upstream slow but keepalive not wired | Verify `withEarlyKeepalive` wraps the dispatch in `src/index.ts` |
-| `E2E=1` tests still mock | No real provider keys in env | Set the relevant `*_API_KEY` in `.env`; `E2E=1` only enables live probes when keys exist |
+| Tests fail locally but pass in CI | `.env` sets `AUTH_TOKENS`, changing auth behavior | Run the hermetic gate: `env -u AUTH_TOKENS pnpm test` |
 
 ---
 

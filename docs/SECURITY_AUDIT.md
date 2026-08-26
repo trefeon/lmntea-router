@@ -1,6 +1,6 @@
 # Security Audit — lmntea-router
 
-> **Date:** 2026-08-26 · **Scope:** `src/middleware/auth.ts`, `src/middleware/bodyLimit.ts`, `src/router/transport.ts`, `src/config/providers.ts`, `src/streaming/*` · **Method:** hermetic via `app.request()` (Hono) + direct unit (no TCP, no live network) · **Verifier:** `tests/security/audit.test.ts` (29 tests) · **Result:** **PASS** — 374/374 green, no bypass remains
+> **Date:** 2026-08-26 (initial audit at P6; superseded by the v0.2.0 three-agent review) · **Scope:** `src/middleware/auth.ts`, `src/middleware/bodyLimit.ts`, `src/router/transport.ts`, `src/config/providers.ts`, `src/streaming/*` · **Method:** hermetic via `app.request()` (Hono) + direct unit (no TCP, no live network) · **Verifier:** `tests/security/audit.test.ts` (29 tests) · **Result:** **PASS** — suite now 568/568 green; v0.2.0 review additionally closed the IPv4-mapped-IPv6 guard bypass and switched auth to timing-safe digest compare
 
 ---
 
@@ -138,13 +138,13 @@ All six required exploit vectors were reproduced hermetically and verified to be
 ## 6. Verification
 
 ```bash
-pnpm test                # 23 suites, 374 tests — hermetic via app.request()
+pnpm test                # 40 suites, 568 tests — hermetic via app.request()
 pnpm lint                # biome check . — no issues
-pnpm build               # tsup src/index.ts --format esm --dts --clean → dist/index.js ~60 KB
+pnpm build               # tsup src/index.ts --format esm --dts --clean → dist/index.js ~190 KB
 pnpm typecheck           # tsc --noEmit — clean
 ```
 
-- **Test evidence:** `tests/security/audit.test.ts` — 29 tests, each exploit is a hermetic `app.request()` or direct unit without `fetch` network. Full suite: `tests/security/audit.test.ts:29` + existing `374 total` (previous 345 + 29) all green.
+- **Test evidence:** `tests/security/audit.test.ts` — 29 tests, each exploit is a hermetic `app.request()` or direct unit without `fetch` network. v0.2.0 additions on top of this audit: mapped-IPv6 normalization cases and timing-safe auth coverage live in `tests/router/transport.test.ts` / `tests/security/`.
 - **Lint evidence:** `biome check .` — clean after hardening (no dynamic `await import`, no wall-clock `setTimeout` in tests — uses `Promise.resolve()` microtask).
 - **Manual spot-checks:**
   - `curl http://localhost:3000/v1/chat/completions` without auth → `401`.
