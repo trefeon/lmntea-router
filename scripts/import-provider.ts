@@ -45,6 +45,21 @@ const REASONING_UNSUPPORTED = [
   'n',
 ] as const
 
+const BASE_ALLOWLIST = [
+  'model',
+  'messages',
+  'max_tokens',
+  'max_completion_tokens',
+  'stream',
+  'tools',
+  'tool_choice',
+  'temperature',
+  'top_p',
+  'n',
+  'stop',
+  'presence_penalty',
+  'frequency_penalty',
+] as const
 const OPENROUTER_MODELS_URL = 'https://openrouter.ai/api/v1/models'
 const OMNI_MODELSPEC_PATH =
   'reference/OmniRoute/src/shared/constants/modelSpecs.ts'
@@ -443,7 +458,7 @@ function parseOmniProviderRegistry(): Map<string, RegistryProvider> {
 
     // models: RegistryModel[] — similar parsing
     const models: Array<{ id: string; raw: string }> = []
-    // crude: find id:" inside models block
+    // 1) inline models: find id:" inside models block
     const idRe = /\{\s*id:\s*"([^"]+)"[^}]*\}/g
     let mm: RegExpExecArray | null
     while ((mm = idRe.exec(content)) !== null) {
@@ -453,7 +468,40 @@ function parseOmniProviderRegistry(): Map<string, RegistryProvider> {
       if (!before.includes('models')) continue
       models.push({ id: mm[1]!, raw: mm[0] })
     }
-
+    // 2) separate const RegistryModel[] arrays referenced by models: CONST_NAME
+    if (models.length === 0) {
+      const modelsRefMatch = content.match(/models:\s*(\w+)\s*,/)
+      const refName = modelsRefMatch?.[1]
+      if (refName) {
+        // Find const refName: RegistryModel[] = [ ... ]
+        const constRe = new RegExp(
+          `const\\s+${refName}\\s*:\\s*RegistryModel\\[\\]\\s*=\\s*\\[([\\s\\S]*?)\\]`,
+        )
+        const constMatch = content.match(constRe)
+        if (constMatch?.[1]) {
+          const block = constMatch[1]
+          const innerRe = /\{\s*id:\s*"([^"]+)"[^}]*\}/g
+          let im: RegExpExecArray | null
+          while ((im = innerRe.exec(block)) !== null) {
+            models.push({ id: im[1]!, raw: im[0] })
+          }
+        } else {
+          // Fallback: also check without type annotation e.g., const ALIBABA_MODEL_STUDIO_MODELS = [
+          const fallbackRe = new RegExp(
+            `const\\s+${refName}\\s*=\\s*\\[([\\s\\S]*?)\\]`,
+          )
+          const fbMatch = content.match(fallbackRe)
+          if (fbMatch?.[1]) {
+            const block = fbMatch[1]
+            const innerRe = /\{\s*id:\s*"([^"]+)"[^}]*\}/g
+            let im: RegExpExecArray | null
+            while ((im = innerRe.exec(block)) !== null) {
+              models.push({ id: im[1]!, raw: im[0] })
+            }
+          }
+        }
+      }
+    }
     // Merge or insert; prefer existing 9router entry but keep Omni as fallback
     if (!map.has(pid)) {
       map.set(pid, {
@@ -624,13 +672,18 @@ function inferProviderFromModelId(modelId: string): string {
   if (lower.startsWith('kimi') || lower.startsWith('k3')) return 'moonshot'
   if (lower.startsWith('glm')) return 'zai'
   if (lower.startsWith('minimax')) return 'minimax'
-  if (lower.startsWith('qwen')) return 'qwen'
+  if (lower.startsWith('qwen')) return 'alibaba'
   if (lower.startsWith('mimo') || lower.startsWith('xiaomi'))
     return 'xiaomi-mimo'
   if (lower.startsWith('doubao') || lower.startsWith('volc'))
     return 'volcengine'
   if (lower.startsWith('bedrock')) return 'bedrock'
   return lower.split('-')[0] ?? 'unknown'
+}
+function computeSupportedParams(stripParams: string[]): string[] {
+  // Inverse of stripParams + base allowlist per watchdog: supported = allowlist - strip
+  const stripSet = new Set(stripParams)
+  return (BASE_ALLOWLIST as readonly string[]).filter((k) => !stripSet.has(k))
 }
 
 function deriveStripParams(
@@ -689,6 +742,13 @@ function deriveThinkingReconciliation(
 }
 
 function providerApiKeyEnv(providerId: string): string {
+  const lower = providerId.toLowerCase()
+  if (
+    lower === 'ollama' ||
+    lower === 'ollama-local' ||
+    lower === 'ollama-cloud'
+  )
+    return ''
   const map: Record<string, string> = {
     openai: 'OPENAI_API_KEY',
     anthropic: 'ANTHROPIC_API_KEY',
@@ -711,9 +771,11 @@ function providerApiKeyEnv(providerId: string): string {
     mistral: 'MISTRAL_API_KEY',
     cohere: 'COHERE_API_KEY',
     xai: 'XAI_API_KEY',
+    alibaba: 'ALIBABA_API_KEY',
+    azure: 'AZURE_API_KEY',
+    vertex: 'VERTEX_API_KEY',
   }
-  const key = providerId.toLowerCase()
-  if (map[key]) return map[key]!
+  if (map[lower]) return map[lower]!
   // fallback: UPPER_SNAKE + _API_KEY
   return `${providerId.replace(/[^a-zA-Z0-9]/g, '_').toUpperCase()}_API_KEY`
 }
@@ -723,16 +785,28 @@ function isRelayProvider(
   category?: string,
   passthrough?: boolean,
 ): boolean {
+  const lower = providerId.toLowerCase()
+  // Regional direct providers: never relay even if passthrough true (per P9 spec: relay false for regional direct)
+  if (
+    lower === 'alibaba' ||
+    lower === 'azure' ||
+    lower === 'vertex' ||
+    lower === 'ollama' ||
+    lower === 'ollama-local' ||
+    lower === 'ollama-cloud' ||
+    lower === 'cohere' ||
+    lower === 'mistral'
+  )
+    return false
   // Relay tier: free/freeTier categories or passthroughModels gateways are relay-like
   if (passthrough) return true
   if (!category) return false
   const c = category.toLowerCase()
   if (c === 'free' || c === 'freetier' || c === 'free_tier') return true
   // openrouter is a gateway/relay aggregator
-  if (providerId.toLowerCase() === 'openrouter') return true
+  if (lower === 'openrouter') return true
   return false
 }
-
 // ---------------------------------------------------------------------------
 // Merge with existing files (preserve + sort)
 // ---------------------------------------------------------------------------
@@ -924,14 +998,51 @@ async function main(): Promise<void> {
     const lk = pid.toLowerCase()
     if (generatedProviders.has(lk)) return generatedProviders.get(lk)!
     const reg = unifiedProviders.get(lk)
-    const baseUrl = reg?.baseUrl || fallbackBaseUrl || ''
-    const format = reg?.format
+    let baseUrl = reg?.baseUrl || fallbackBaseUrl || ''
+    let format = reg?.format
     const passthrough = reg?.passthroughModels
     const category = reg?.category
     const citations: string[] = []
     if (reg?.citation) citations.push(reg.citation)
     if (citation) citations.push(citation)
     if (citations.length === 0) citations.push(`inferred:provider:${pid}`)
+    // Regional overrides per P9 spec
+    if (lk === 'ollama') {
+      baseUrl = 'http://localhost:11434'
+      format = 'ollama'
+      // citation for local ollama: 9router ollama-local.js:2 | reference/OmniRoute constant
+      if (!citations.some((c) => c.includes('ollama'))) {
+        citations.unshift(
+          'reference/9router/open-sse/providers/registry/ollama-local.js:2 (local baseUrl)',
+        )
+      }
+    }
+    if (lk === 'vertex') {
+      // Prefer 9router vertex registry baseUrl https://aiplatform.googleapis.com with gemini format
+      if (!baseUrl || baseUrl.includes('us-central1')) {
+        baseUrl = 'https://aiplatform.googleapis.com'
+      }
+      format = 'gemini'
+    }
+    if (lk === 'azure' && !baseUrl) {
+      baseUrl = 'https://azure.example.com/v1'
+      // keep citation from 9router azure.js:2 (baseUrl empty) + inferred
+      if (!citations.some((c) => c.includes('azure'))) {
+        citations.push(
+          'reference/9router/open-sse/providers/registry/azure.js:2 (baseUrl placeholder)',
+        )
+      }
+    }
+    if (lk === 'alibaba' && !baseUrl) {
+      baseUrl =
+        'https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions'
+    }
+    if (lk === 'cohere') {
+      // Use OmniRoute cohere compatibility baseUrl (issue #2360)
+      const omniCohere = omniRegistry.get('cohere')
+      if (omniCohere?.baseUrl) baseUrl = omniCohere.baseUrl
+      format = 'openai'
+    }
     const prov: GeneratedProvider = {
       id: pid,
       baseUrl: baseUrl || `https://${pid}.example.com/v1`,
@@ -1021,7 +1132,7 @@ async function main(): Promise<void> {
       defaultThinkingBudget: entry.defaultThinkingBudget,
       supportsVision: entry.supportsVision,
       supportsThinking: entry.supportsThinking,
-      supportedParams: [],
+      supportedParams: computeSupportedParams(stripParams),
       stripParams,
       requiresThinkingReconciliation: thinking,
       citations,
@@ -1111,7 +1222,7 @@ async function main(): Promise<void> {
         defaultThinkingBudget: omni?.defaultThinkingBudget,
         supportsVision: omni?.supportsVision,
         supportsThinking: omni?.supportsThinking,
-        supportedParams: [],
+        supportedParams: computeSupportedParams(strip),
         stripParams: strip,
         requiresThinkingReconciliation: thinking,
         citations,

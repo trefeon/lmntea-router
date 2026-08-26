@@ -30,10 +30,22 @@ describe('MODEL_REGISTRY invariants', () => {
       expect(spec.id).toBe(key)
     }
   })
-  it('has ~78 entries and respects normative caps (per_provider)', () => {
+  it('has >=78 entries and respects normative caps (per_provider)', () => {
     const entries = Object.entries(MODEL_REGISTRY)
+    // P7 landed 8→79; P9 --limit 10 slices grow this bound with presence checks below
     expect(entries.length).toBeGreaterThanOrEqual(78)
-    expect(entries.length).toBeLessThanOrEqual(200)
+    // slice bound — grows per P9 --limit 10 PR, not arbitrary
+    expect(entries.length).toBeLessThanOrEqual(300)
+    // presence: critical caps verbatim from modelSpecs.ts (no silent truncation)
+    for (const id of [
+      'minimax/minimax-m3', // modelSpecs.ts:619 — 1048576/512000 cap32768
+      'openai/gpt-5.6',
+      'deepseek/deepseek-v4-pro',
+      'anthropic/claude-fable-5',
+      'moonshot/kimi-k3',
+    ]) {
+      expect(MODEL_REGISTRY[id], `presence ${id}`).toBeDefined()
+    }
 
     for (const [, spec] of entries) {
       if (spec.provider === 'opencode') {
