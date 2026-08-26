@@ -1,5 +1,7 @@
 import { serve } from '@hono/node-server'
+import { serveStatic } from '@hono/node-server/serve-static'
 import { Hono } from 'hono'
+import { cors } from 'hono/cors'
 import { authMiddleware } from './middleware/auth.js'
 import { bodyLimitMiddleware } from './middleware/bodyLimit.js'
 import { requireJson } from './middleware/contentType.js'
@@ -14,12 +16,33 @@ const VERSION = '0.1.0'
 export function createApp() {
   const app = new Hono<Env>()
 
+  // CORS — allow frontend dev (vite proxy + direct fetch)
+  app.use(
+    '*',
+    cors({
+      origin: '*',
+      allowHeaders: [
+        'Content-Type',
+        'Authorization',
+        'x-api-key',
+        'anthropic-api-key',
+        'x-request-id',
+      ],
+      exposeHeaders: [
+        'x-clamped-max-tokens',
+        'x-sanitize-stripped',
+        'x-request-id',
+      ],
+      allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+      maxAge: 86400,
+    }),
+  )
+
   // Global middleware order: requestId -> contentTypeGuard (415) -> bodyLimit (413) -> auth (401, skip /health) -> routes
   app.use('*', requestId)
   app.use('*', requireJson)
   app.use('*', bodyLimitMiddleware())
   app.use('*', authMiddleware)
-
   // liveness — no auth (authMiddleware skips /health), but requestId still applied
   app.get('/health', (c) =>
     c.json({ status: 'ok', uptime: process.uptime(), version: VERSION }),
@@ -43,6 +66,10 @@ export function createApp() {
   mountMessages(app)
   mountModels(app)
 
+  // Serve frontend static (prod single-binary) — Hono serveStatic from apps/web/dist
+  // In dev, vite handles it via proxy; in prod, node serves built assets
+  // Only serves if file exists, otherwise falls through to 404 JSON (no SPA fallback on /v1)
+  app.use('/*', serveStatic({ root: './apps/web/dist' }))
   // 404 — keep shape per 03-API-CONTRACTS
   app.notFound((c) => {
     const requestIdVal = getRequestId(c)
