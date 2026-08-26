@@ -72,7 +72,7 @@ export const PROVIDERS: Record<string, ProviderSpec> = {
     format: 'openai',
   },
   volcengine: {
-    // source: reference/OmniRoute/open-sse/config/providers/registry/volcengine/index.ts:5 | reference/OmniRoute/open-sse/config/providers/registry/volcengine/index.ts:5
+    // source: reference/OmniRoute/open-sse/config/providers/registry/volcengine/index.ts:5
     baseUrl: 'https://ark.cn-beijing.volces.com/api/v3/chat/completions',
     apiKeyEnv: 'VOLCENGINE_API_KEY',
     timeoutMs: 30000,

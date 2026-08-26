@@ -60,6 +60,22 @@ const BASE_ALLOWLIST = [
   'presence_penalty',
   'frequency_penalty',
 ] as const
+
+// Reasoning params every generated model supports (normalizer reconciles or
+// strips per spec); logprobs family appended when the source model exposes it.
+const REASONING_GROUP = [
+  'reasoning',
+  'reasoning_effort',
+  'thinking',
+  'include_reasoning',
+] as const
+
+const SUPPORTED_PARAM_ORDER: readonly string[] = [
+  ...(BASE_ALLOWLIST as readonly string[]),
+  'logprobs',
+  'top_logprobs',
+  ...REASONING_GROUP,
+]
 const OPENROUTER_MODELS_URL = 'https://openrouter.ai/api/v1/models'
 const OMNI_MODELSPEC_PATH =
   'reference/OmniRoute/src/shared/constants/modelSpecs.ts'
@@ -681,11 +697,18 @@ function inferProviderFromModelId(modelId: string): string {
   return lower.split('-')[0] ?? 'unknown'
 }
 function computeSupportedParams(stripParams: string[]): string[] {
-  // Inverse of stripParams + base allowlist per watchdog: supported = allowlist - strip
+  // supported = BASE_ALLOWLIST + logprobs family + REASONING_GROUP - strip.
+  // Reasoning group is universal (normalizer reconciles thinking per spec);
+  // logprobs/top_logprobs ship unless stripped — this reproduces the
+  // committed 19-param sets for frontier models instead of the old ≤13
+  // allowlist-minus-strip result.
   const stripSet = new Set(stripParams)
-  return (BASE_ALLOWLIST as readonly string[]).filter((k) => !stripSet.has(k))
+  return SUPPORTED_PARAM_ORDER.filter((k) => !stripSet.has(k))
 }
 
+function dedupeCitations(list: string[]): string[] {
+  return [...new Set(list)]
+}
 function deriveStripParams(
   supported: string[] | undefined,
   unsupported: readonly string[] | undefined,
@@ -1004,7 +1027,7 @@ async function main(): Promise<void> {
     const category = reg?.category
     const citations: string[] = []
     if (reg?.citation) citations.push(reg.citation)
-    if (citation) citations.push(citation)
+    if (citation && !citations.includes(citation)) citations.push(citation)
     if (citations.length === 0) citations.push(`inferred:provider:${pid}`)
     // Regional overrides per P9 spec
     if (lk === 'ollama') {
@@ -1415,7 +1438,7 @@ async function main(): Promise<void> {
       if (v.passthroughModels && !ex.passthroughModels)
         ex.passthroughModels = v.passthroughModels
       if (v.citations.length)
-        ex.citations = [...(ex.citations ?? []), ...v.citations]
+        ex.citations = [...new Set([...(ex.citations ?? []), ...v.citations])]
     }
   }
 

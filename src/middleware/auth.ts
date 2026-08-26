@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash, timingSafeEqual } from 'node:crypto'
 import type { Context, Next } from 'hono'
 import type { Env } from '../types.js'
 import { unauthorized } from './errors.js'
@@ -13,7 +13,7 @@ export function isAuthRequired(): boolean {
 }
 
 export async function authMiddleware(c: Context<Env>, next: Next) {
-  if (c.req.path.startsWith('/health')) return next()
+  if (/^\/health(\/live|\/ready)?$/.test(c.req.path)) return next()
   // Static dashboard assets (serveStatic) carry no secrets — gating them would
   // 401 the UI in prod single-binary mode. Narrow allowlist: only vite build
   // output (/ index.html, /assets/*, favicon). Unknown paths keep 401 behavior.
@@ -55,7 +55,14 @@ export async function authMiddleware(c: Context<Env>, next: Next) {
   else if (xApiKey) token = xApiKey.trim()
   else if (anthropicKey) token = anthropicKey.trim()
 
-  if (!token || !allowed.includes(token)) {
+  if (!token) return unauthorized(c)
+  // Constant-time comparison: compare sha256 digests instead of raw tokens so
+  // token length/content never leaks through early-exit string equality.
+  const tokenDigest = Buffer.from(hashKey(token), 'hex')
+  const match = allowed.some((k) =>
+    timingSafeEqual(Buffer.from(hashKey(k), 'hex'), tokenDigest),
+  )
+  if (!match) {
     return unauthorized(c)
   }
   c.set('auth', { keyHash: hashKey(token).slice(0, 8) })

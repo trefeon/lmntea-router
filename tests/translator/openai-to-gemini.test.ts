@@ -135,9 +135,9 @@ describe('openaiToGemini', () => {
     expect(parts[0]).toEqual({
       thought: true,
       text: 'I need to think step by step',
+      thoughtSignature: 'sig-123',
     })
-    expect(parts[1]).toEqual({ thoughtSignature: 'sig-123' })
-    expect(parts[2]).toEqual({ text: 'final answer' })
+    expect(parts[1]).toEqual({ text: 'final answer' })
   })
 
   it('handles thoughtSignature on tool_calls', () => {
@@ -363,5 +363,90 @@ describe('openaiToGemini', () => {
       ],
     })
     expect(out.systemInstruction?.parts[0]?.text).toBe('sys1\nsys2')
+  })
+
+  it('maps reasoning_effort minimal to thinkingBudget 512', () => {
+    const out = outOf({
+      model: 'm',
+      messages: [{ role: 'user', content: 'hi' }],
+      reasoning_effort: 'minimal',
+    })
+    expect(out.generationConfig?.thinkingConfig).toEqual({
+      thinkingBudget: 512,
+      includeThoughts: true,
+    })
+  })
+
+  it('throws ZodError on invalid input (missing model)', () => {
+    expect(() =>
+      outOf({
+        messages: [{ role: 'user', content: 'hi' }],
+      } as unknown as Record<string, unknown>),
+    ).toThrow()
+  })
+
+  it('merges bare thoughtSignature onto adjacent parts instead of emitting standalone parts', () => {
+    const out = outOf({
+      model: 'm',
+      messages: [
+        {
+          role: 'assistant',
+          content: 'answer',
+          reasoning_content: 'hmm',
+          thoughtSignature: 'sig-a',
+        },
+        {
+          role: 'assistant',
+          content: null,
+          tool_calls: [
+            {
+              id: 'c1',
+              type: 'function',
+              function: { name: 'f', arguments: '{}' },
+              thoughtSignature: 'sig-b',
+            },
+          ],
+        },
+      ],
+    })
+    // consecutive model contents merge into one; no bare signature part remains
+    expect(out.contents).toHaveLength(1)
+    const parts = out.contents[0]?.parts ?? []
+    expect(parts[0]).toEqual({
+      thought: true,
+      text: 'hmm',
+      thoughtSignature: 'sig-a',
+    })
+    expect(parts[1]).toEqual({ text: 'answer' })
+    expect(parts[2]?.thoughtSignature).toBe('sig-b')
+    expect(parts[2]?.functionCall).toEqual({ name: 'f', args: {} })
+    expect(
+      parts.some(
+        (p) =>
+          p.functionCall === undefined &&
+          p.text === undefined &&
+          p.inlineData === undefined &&
+          p.fileData === undefined &&
+          p.thoughtSignature !== undefined,
+      ),
+    ).toBe(false)
+  })
+
+  it('routes malformed tool output without tool_call_id through the unmatched-text path', () => {
+    const out = outOf({
+      model: 'm',
+      messages: [
+        { role: 'user', content: 'hi' },
+        { role: 'tool', content: 'stray output' },
+      ],
+    })
+    const parts = out.contents.flatMap((c) => c.parts)
+    expect(parts.some((p) => p.functionResponse !== undefined)).toBe(false)
+    const stray = parts.find(
+      (p) =>
+        typeof p.text === 'string' &&
+        p.text.startsWith('[Unmatched tool output]'),
+    )
+    expect(stray?.text).toContain('stray output')
   })
 })

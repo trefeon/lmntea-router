@@ -2,6 +2,7 @@ import { serve } from '@hono/node-server'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
+import { startIntelligenceSync } from './intelligence/sync.js'
 import { authMiddleware } from './middleware/auth.js'
 import { bodyLimitMiddleware } from './middleware/bodyLimit.js'
 import { requireJson } from './middleware/contentType.js'
@@ -117,6 +118,12 @@ if (import.meta.main) {
   console.log(
     `[lmntea-router] listening on http://localhost:${port}  (GET /health)`,
   )
+  // P6 intelligence — advisory background sync at server startup; never blocks
+  // the event loop. Guarded to non-test runtimes: vitest imports this module
+  // transitively via createApp() and must not open sync timers.
+  const isTestRuntime =
+    process.env.VITEST === 'true' || process.env.NODE_ENV === 'test'
+  if (!isTestRuntime) startIntelligenceSync()
   // @ts-ignore — Bun global only when run via `bun`
   if (typeof Bun !== 'undefined') Bun.serve({ port, fetch: app.fetch })
   else

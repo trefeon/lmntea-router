@@ -1,6 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp } from '../src/index.js'
 import { clampBody, clampMaxTokens } from '../src/normalizer/clamp.js'
+import { COOLDOWN_MS, TRIP_THRESHOLD } from '../src/router/circuitBreaker.js'
+import { __resetBreakerStatesForTests } from '../src/routes/chat.js'
 
 describe('P3 — wire P2 normalizer into routes (p3-wire)', () => {
   const origAuth = process.env.AUTH_TOKENS
@@ -138,5 +140,63 @@ describe('P3 — wire P2 normalizer into routes (p3-wire)', () => {
     expect(res.headers.get('content-type')).toMatch(/text\/event-stream/)
     // stream also sets clamped header before returning (P4 engine)
     expect(res.headers.get('x-clamped-max-tokens')).toBe('131072')
+  })
+
+  it('breaker blocks second upstream dispatch within cooldown (fake timers)', async () => {
+    vi.useFakeTimers()
+    __resetBreakerStatesForTests()
+    // fresh failing Response per call — route consumes error bodies on failover
+    const fetchMock = vi.fn(async () => new Response('boom', { status: 500 }))
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch)
+    try {
+      const app = createApp()
+      const fire = () =>
+        app.request('/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer sk-test',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'opencode/x-preview-f-free',
+            messages: [{ role: 'user', content: 'hi' }],
+            max_tokens: 64,
+            stream: true,
+          }),
+        })
+
+      // TRIP_THRESHOLD consecutive 5xx responses trip the provider breaker
+      for (let i = 0; i < TRIP_THRESHOLD; i++) {
+        const pending = fire()
+        await vi.advanceTimersByTimeAsync(0)
+        const res = await pending
+        // test runtime still serves the hermetic mock stream on exhaustion
+        expect(res.status).toBe(200)
+        await res.text()
+      }
+      expect(fetchMock).toHaveBeenCalledTimes(TRIP_THRESHOLD)
+
+      // next request within cooldown: breaker OPEN → dispatch skipped entirely
+      const blocked = fire()
+      await vi.advanceTimersByTimeAsync(0)
+      const resBlocked = await blocked
+      expect(fetchMock).toHaveBeenCalledTimes(TRIP_THRESHOLD)
+      expect(resBlocked.headers.get('x-router-action')).toContain(
+        'breaker_skip:opencode',
+      )
+      await resBlocked.text()
+
+      // after cooldown elapses the breaker half-opens and attempts again
+      await vi.advanceTimersByTimeAsync(COOLDOWN_MS + 1)
+      const recovered = fire()
+      await vi.advanceTimersByTimeAsync(0)
+      const resRecovered = await recovered
+      expect(fetchMock).toHaveBeenCalledTimes(TRIP_THRESHOLD + 1)
+      await resRecovered.text()
+    } finally {
+      __resetBreakerStatesForTests()
+      vi.unstubAllGlobals()
+      vi.useRealTimers()
+    }
   })
 })

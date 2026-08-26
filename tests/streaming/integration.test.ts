@@ -297,4 +297,42 @@ describe('P4 streaming — sse + earlyKeepalive + stallWatchdog integration', ()
       expect(read.done !== undefined).toBe(true)
     }
   })
+
+  // ---- stage 6 composition swap: keepalive must NOT feed the watchdog ----
+  it('watchdog fires synthetic finish while keepalive pings are active (pre-first-byte stall)', async () => {
+    // Upstream that never emits a single byte — the pre-first-byte stall that
+    // the OLD composition (watchdog around keepalive) masked forever, because
+    // every `: keepalive` comment reset the stall timer.
+    const never = new ReadableStream<Uint8Array>({
+      start() {
+        // never enqueue, never close
+      },
+    })
+    // NEW order (as wired in routes): watchdog wraps the RAW upstream stream,
+    // then keepalive decorates the watched output for the client.
+    const watched = withStallWatchdog(never, {
+      timeoutMs: 80,
+      format: 'openai',
+    })
+    const decorated = withEarlyKeepalive(watched, {
+      graceMs: 20,
+      intervalMs: 25,
+      comment: 'keepalive',
+    })
+    const reader = decorated.getReader()
+    const decoder = new TextDecoder()
+    let out = ''
+    const deadline = Date.now() + 3000
+    while (Date.now() < deadline) {
+      const { done, value } = await reader.read()
+      if (done) break
+      out += decoder.decode(value)
+      if (out.includes('data: [DONE]')) break
+    }
+    // client saw keepalive pings…
+    expect(out).toContain(': keepalive')
+    // …AND the watchdog still fired the synthetic graceful finish
+    expect(out).toContain('finish_reason')
+    expect(out).toContain('data: [DONE]')
+  })
 })

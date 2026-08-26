@@ -347,28 +347,30 @@ function resolveThinking(
   return undefined
 }
 
-function fixToolUseOrdering(messages: ClaudeMessage[]): ClaudeMessage[] {
+export function fixToolUseOrdering(messages: ClaudeMessage[]): ClaudeMessage[] {
   for (const msg of messages) {
     if (
       msg.role === 'assistant' &&
       msg.content.some((b) => b.type === 'tool_use')
     ) {
-      const newContent: ClaudeContentBlock[] = []
-      let foundToolUse = false
+      // Stable partition: thinking stays up front (Anthropic requires it
+      // before tool_use), tool_use next, and non-thinking blocks that follow
+      // tool_use are preserved after the calls instead of being discarded.
+      const leading: ClaudeContentBlock[] = []
+      const toolUses: ClaudeContentBlock[] = []
+      const trailing: ClaudeContentBlock[] = []
+      let seenToolUse = false
       for (const block of msg.content) {
-        if (block.type === 'tool_use') {
-          foundToolUse = true
-          newContent.push(block)
-        } else if (
-          block.type === 'thinking' ||
-          block.type === 'redacted_thinking'
-        ) {
-          newContent.push(block)
-        } else if (!foundToolUse) {
-          newContent.push(block)
+        if (block.type === 'thinking' || block.type === 'redacted_thinking') {
+          leading.push(block)
+        } else if (block.type === 'tool_use') {
+          seenToolUse = true
+          toolUses.push(block)
+        } else {
+          ;(seenToolUse ? trailing : leading).push(block)
         }
       }
-      msg.content = newContent
+      msg.content = [...leading, ...toolUses, ...trailing]
     }
   }
 
@@ -394,47 +396,57 @@ function fixToolUseOrdering(messages: ClaudeMessage[]): ClaudeMessage[] {
   return merged
 }
 
+function stripCacheControl(block: unknown): void {
+  const rec = block as Record<string, unknown>
+  // biome-ignore lint/performance/noDelete: exactOptionalPropertyTypes requires delete
+  delete rec.cache_control
+}
+
+function hasCacheControl(block: unknown): boolean {
+  return (
+    typeof block === 'object' &&
+    block !== null &&
+    (block as Record<string, unknown>).cache_control !== undefined
+  )
+}
+
 function enforceCacheControlLimit(
   messages: ClaudeMessage[],
   system?: ClaudeRequest['system'],
+  tools?: ClaudeRequest['tools'],
 ): void {
-  const allBlocks: { cache_control?: { type: 'ephemeral'; ttl?: string } }[] =
-    []
+  // Anthropic counts cache_control breakpoints globally: at most 4 across
+  // tools + system + message blocks combined. The budget is seeded with tool
+  // markers first (they are stable across turns), then system blocks, then
+  // message blocks in order; anything past the limit is trimmed newest-first.
+  let remaining = 4
+  if (Array.isArray(tools)) {
+    for (const tool of tools) {
+      if (!hasCacheControl(tool)) continue
+      if (remaining > 0) {
+        remaining--
+      } else {
+        stripCacheControl(tool)
+      }
+    }
+  }
   if (Array.isArray(system)) {
-    allBlocks.push(...system)
+    for (const block of system) {
+      if (!hasCacheControl(block)) continue
+      if (remaining > 0) {
+        remaining--
+      } else {
+        stripCacheControl(block)
+      }
+    }
   }
   for (const m of messages) {
     for (const b of m.content) {
-      const rec = b as unknown as Record<string, unknown>
-      if ('cache_control' in rec && rec.cache_control !== undefined) {
-        allBlocks.push(
-          b as { cache_control?: { type: 'ephemeral'; ttl?: string } },
-        )
-      }
-    }
-  }
-  if (allBlocks.length > 4) {
-    let toRemove = allBlocks.length - 4
-    if (Array.isArray(system)) {
-      for (const block of system) {
-        if (toRemove <= 0) break
-        if (block.cache_control !== undefined) {
-          // biome-ignore lint/performance/noDelete: cache control limit
-          delete block.cache_control
-          toRemove--
-        }
-      }
-    }
-    for (const m of messages) {
-      if (toRemove <= 0) break
-      for (const b of m.content) {
-        const rec = b as unknown as Record<string, unknown>
-        if (rec.cache_control !== undefined) {
-          // biome-ignore lint/performance/noDelete: cache control limit
-          delete rec.cache_control
-          toRemove--
-          if (toRemove <= 0) break
-        }
+      if (!hasCacheControl(b)) continue
+      if (remaining > 0) {
+        remaining--
+      } else {
+        stripCacheControl(b)
       }
     }
   }
@@ -672,14 +684,18 @@ export function openaiToClaude(input: unknown): ClaudeRequest {
             : undefined
       const nameFromMap = toolCallId ? toolIdToName.get(toolCallId) : undefined
       const explicitName = typeof rec.name === 'string' ? rec.name : undefined
-      const isOrphan = Boolean(toolCallId && !nameFromMap && !explicitName)
-
-      if (isOrphan) {
+      // Malformed tool outputs (missing id, or an id that matches no known
+      // tool_use and carries no explicit name) cannot reference a tool_use
+      // block, so they degrade to user-visible text instead of fabricating ids.
+      if (!toolCallId || (!nameFromMap && !explicitName)) {
         const rawContent = rec.content
+        const prefix = toolCallId
+          ? `[Unmatched tool output ${toolCallId}]: `
+          : '[Unmatched tool output]: '
         const textFallback =
           typeof rawContent === 'string'
-            ? `[Unmatched tool output ${toolCallId}]: ${rawContent}`
-            : `[Unmatched tool output ${toolCallId}]: ${JSON.stringify(rawContent)}`
+            ? `${prefix}${rawContent}`
+            : `${prefix}${JSON.stringify(rawContent)}`
         const block: ClaudeTextBlock = { type: 'text', text: textFallback }
         const cache = rec.cache_control as
           | { type: 'ephemeral'; ttl?: string }
@@ -700,7 +716,7 @@ export function openaiToClaude(input: unknown): ClaudeRequest {
 
       const block: ClaudeToolResultBlock = {
         type: 'tool_result',
-        tool_use_id: toolCallId ?? 'unknown',
+        tool_use_id: toolCallId,
         content: contentStr,
       }
       const isError = rec.is_error as boolean | undefined
@@ -789,6 +805,16 @@ export function openaiToClaude(input: unknown): ClaudeRequest {
         }
         break
       }
+      // Synthesize stub tool_results for any tool_use ids that never received
+      // a matching role:'tool' message so every assistant(tool_use) turn is
+      // answered before deferred user turns are emitted.
+      for (const id of pendingIds) {
+        collectedToolResults.push({
+          type: 'tool_result',
+          tool_use_id: id,
+          content: '[Tool execution omitted]',
+        })
+      }
       if (collectedToolResults.length > 0) {
         repaired.push({ role: 'user', content: collectedToolResults })
       }
@@ -804,7 +830,7 @@ export function openaiToClaude(input: unknown): ClaudeRequest {
 
   const merged = fixToolUseOrdering(repaired)
 
-  enforceCacheControlLimit(merged, system)
+  enforceCacheControlLimit(merged, system, tools)
 
   const out: ClaudeRequest = {
     model,
@@ -841,6 +867,13 @@ export function openaiToClaude(input: unknown): ClaudeRequest {
         out.max_tokens = thinking.budget_tokens + 1024
       }
     }
+  }
+
+  // Anthropic Messages requires max_tokens on every request; requests without
+  // an explicit cap (e.g. unknown/unregistered models sent standalone) get a
+  // safe terminal default.
+  if (out.max_tokens === undefined) {
+    out.max_tokens = 8192
   }
 
   if (typeof body.temperature === 'number')

@@ -557,7 +557,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: false,
   },
   'commandcode/deepseek/deepseek-v4-flash': {
-    // source: reference/OmniRoute/open-sse/config/providers/registry/commandcode/index.ts:4 | https://openrouter.ai/api/v1/models (context_length=262144, top_provider.max_completion_tokens=200000)
+    // source: https://openrouter.ai/api/v1/models (context_length=262144, top_provider.max_completion_tokens=200000)
     id: 'commandcode/deepseek/deepseek-v4-flash',
     provider: 'commandcode',
     contextWindow: 262144,
@@ -587,7 +587,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: false,
   },
   'commandcode/gpt-5.6-luna': {
-    // source: reference/OmniRoute/open-sse/config/providers/registry/commandcode/index.ts:4 | https://openrouter.ai/api/v1/models (context_length=128000, top_provider.max_completion_tokens=16384)
+    // source: https://openrouter.ai/api/v1/models (context_length=128000, top_provider.max_completion_tokens=16384)
     id: 'commandcode/gpt-5.6-luna',
     provider: 'commandcode',
     contextWindow: 128000,

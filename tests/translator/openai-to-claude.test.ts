@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { openaiToClaude } from '../../src/translator/openai-to-claude.js'
+import {
+  fixToolUseOrdering,
+  openaiToClaude,
+} from '../../src/translator/openai-to-claude.js'
 
 function outOf(body: Record<string, unknown>) {
   return openaiToClaude(body)
@@ -127,7 +130,17 @@ describe('openaiToClaude', () => {
         },
       ],
     })
-    expect(out.messages).toHaveLength(2)
+    // unanswered tool_use now gets a synthetic answering turn
+    expect(out.messages).toHaveLength(3)
+    const stubTurn = out.messages[2]
+    expect(stubTurn?.role).toBe('user')
+    let stubSeen = false
+    for (const b of stubTurn?.content ?? []) {
+      if (b.type === 'tool_result' && b.tool_use_id === 'call_1') {
+        stubSeen = true
+      }
+    }
+    expect(stubSeen).toBe(true)
     const assistant = out.messages[1]
     expect(assistant?.role).toBe('assistant')
     const toolUse = assistant?.content.find((b) => b.type === 'tool_use') as
@@ -435,5 +448,243 @@ describe('openaiToClaude', () => {
     expect(
       toolMsgs[0]?.content.filter((b) => b.type === 'tool_result'),
     ).toHaveLength(1)
+  })
+
+  it('seeds the global cache_control budget with tools first (4 cached tools + cached system emit <= 4)', () => {
+    const cc = { type: 'ephemeral' as const }
+    const cachedTool = (name: string) => ({
+      type: 'function',
+      function: { name, arguments: '{}' },
+      cache_control: cc,
+    })
+    const out = outOf({
+      model: 'm',
+      messages: [
+        {
+          role: 'system',
+          content: 'sys prompt',
+          cache_control: cc,
+        },
+        { role: 'user', content: 'hi' },
+      ],
+      tools: [
+        cachedTool('t1'),
+        cachedTool('t2'),
+        cachedTool('t3'),
+        cachedTool('t4'),
+      ],
+    })
+    let toolMarkers = 0
+    for (const t of out.tools ?? []) {
+      if ('cache_control' in t) toolMarkers++
+    }
+    expect(toolMarkers).toBe(4)
+    let messageMarkers = 0
+    for (const m of out.messages) {
+      for (const b of m.content) {
+        if ('cache_control' in b) messageMarkers++
+      }
+    }
+    expect(messageMarkers).toBe(0)
+  })
+
+  it('trims newest message markers first once tools seed the budget', () => {
+    const cc = { type: 'ephemeral' as const }
+    const marker = (text: string) => ({
+      type: 'text',
+      text,
+      cache_control: cc,
+    })
+    const out = outOf({
+      model: 'm',
+      messages: [
+        { role: 'user', content: [marker('a')] },
+        { role: 'assistant', content: [marker('b')] },
+        { role: 'user', content: [marker('c')] },
+      ],
+      tools: [
+        {
+          type: 'function',
+          function: { name: 't1', arguments: '{}' },
+          cache_control: cc,
+        },
+        {
+          type: 'function',
+          function: { name: 't2', arguments: '{}' },
+          cache_control: cc,
+        },
+      ],
+    })
+    let toolMarkers = 0
+    for (const t of out.tools ?? []) {
+      if ('cache_control' in t) toolMarkers++
+    }
+    expect(toolMarkers).toBe(2)
+    const cachedTexts: string[] = []
+    for (const m of out.messages) {
+      for (const b of m.content) {
+        if (b.type === 'text' && 'cache_control' in b) cachedTexts.push(b.text)
+      }
+    }
+    expect(cachedTexts).toEqual(['a', 'b'])
+  })
+
+  it('synthesizes omitted tool_results so every tool_use is answered before deferred user turns', () => {
+    const out = outOf({
+      model: 'm',
+      messages: [
+        {
+          role: 'assistant',
+          content: null,
+          tool_calls: [
+            {
+              id: 'call_1',
+              type: 'function',
+              function: { name: 'a', arguments: '{}' },
+            },
+            {
+              id: 'call_2',
+              type: 'function',
+              function: { name: 'b', arguments: '{}' },
+            },
+          ],
+        },
+        { role: 'user', content: 'continue please' },
+      ],
+    })
+    expect(out.messages).toHaveLength(2)
+    const followUp = out.messages[1]
+    expect(followUp?.role).toBe('user')
+    const stubIds: string[] = []
+    let deferredText: string | undefined
+    for (const b of followUp?.content ?? []) {
+      if (b.type === 'tool_result') {
+        stubIds.push(b.tool_use_id)
+        expect(b.content).toBe('[Tool execution omitted]')
+      } else if (b.type === 'text') {
+        deferredText = b.text
+      }
+    }
+    expect(stubIds).toEqual(['call_1', 'call_2'])
+    expect(deferredText).toBe('continue please')
+  })
+
+  it('synthesizes stubs only for unanswered ids when some results arrived', () => {
+    const out = outOf({
+      model: 'm',
+      messages: [
+        {
+          role: 'assistant',
+          content: null,
+          tool_calls: [
+            {
+              id: 'call_1',
+              type: 'function',
+              function: { name: 'a', arguments: '{}' },
+            },
+            {
+              id: 'call_2',
+              type: 'function',
+              function: { name: 'b', arguments: '{}' },
+            },
+          ],
+        },
+        { role: 'tool', tool_call_id: 'call_1', content: 'ok' },
+        { role: 'user', content: 'go on' },
+      ],
+    })
+    const followUp = out.messages[1]
+    const seen: string[] = []
+    for (const b of followUp?.content ?? []) {
+      if (b.type === 'tool_result') {
+        seen.push(`${b.tool_use_id}=${b.content}`)
+      }
+    }
+    expect(seen).toEqual(['call_1=ok', 'call_2=[Tool execution omitted]'])
+  })
+
+  it('routes malformed tool output without tool_call_id through the unmatched-text path', () => {
+    const out = outOf({
+      model: 'm',
+      messages: [
+        { role: 'user', content: 'hi' },
+        { role: 'tool', content: 'stray output' },
+      ],
+    })
+    let sawToolResult = false
+    let stray: string | undefined
+    for (const m of out.messages) {
+      for (const b of m.content) {
+        if (b.type === 'tool_result') sawToolResult = true
+        if (b.type === 'text' && b.text.startsWith('[Unmatched tool output]')) {
+          stray = b.text
+        }
+      }
+    }
+    expect(sawToolResult).toBe(false)
+    expect(stray).toBeDefined()
+    expect(stray).toContain('stray output')
+  })
+
+  it('defaults max_tokens to 8192 when absent (Anthropic Messages requires it)', () => {
+    const out = outOf({
+      model: 'some-unregistered-model',
+      messages: [{ role: 'user', content: 'hi' }],
+    })
+    expect(out.max_tokens).toBe(8192)
+  })
+
+  it('preserves cache_control on system blocks when the budget allows', () => {
+    const out = outOf({
+      model: 'm',
+      messages: [
+        {
+          role: 'system',
+          content: 'sys',
+          cache_control: { type: 'ephemeral' },
+        },
+        { role: 'user', content: 'hi' },
+      ],
+    })
+    const sysBlocks = out.system
+    expect(Array.isArray(sysBlocks)).toBe(true)
+    const first = Array.isArray(sysBlocks) ? sysBlocks[0] : undefined
+    expect(first !== undefined && 'cache_control' in first).toBe(true)
+  })
+})
+
+describe('fixToolUseOrdering', () => {
+  it('appends non-thinking blocks after tool_use instead of discarding them', () => {
+    const out = fixToolUseOrdering([
+      {
+        role: 'assistant',
+        content: [
+          { type: 'text', text: 'lead' },
+          { type: 'tool_use', id: 'c1', name: 'a', input: {} },
+          { type: 'text', text: 'trail' },
+        ],
+      },
+    ])
+    const shapes = out[0]?.content.map((b) =>
+      b.type === 'text' ? `text:${b.text}` : b.type,
+    )
+    expect(shapes).toEqual(['text:lead', 'tool_use', 'text:trail'])
+  })
+
+  it('hoists thinking ahead of tool_use while preserving later text', () => {
+    const out = fixToolUseOrdering([
+      {
+        role: 'assistant',
+        content: [
+          { type: 'tool_use', id: 'c1', name: 'a', input: {} },
+          { type: 'thinking', thinking: 'hm', signature: 's' },
+          { type: 'text', text: 'post' },
+        ],
+      },
+    ])
+    const shapes = out[0]?.content.map((b) =>
+      b.type === 'text' ? `text:${b.text}` : b.type,
+    )
+    expect(shapes).toEqual(['thinking', 'tool_use', 'text:post'])
   })
 })

@@ -193,15 +193,7 @@ export function wrapWithEarlyKeepalive(
       onAbort()
     } else {
       signal.addEventListener('abort', onAbort, { once: true })
-      // cleanup when stream ends
-      const cleanup = () => signal.removeEventListener('abort', onAbort)
-      // wrap to ensure cleanup after stream closes
-      const wrapped = upstream.pipeThrough(transform)
-      // attach cleanup on done — use finally-like
-      const origCancel = wrapped.cancel.bind(wrapped)
-      // we cannot easily hook close, so just return and rely on signal one-time
-      void cleanup // keep reference
-      return wrapped
+      return upstream.pipeThrough(transform)
     }
   }
   return upstream.pipeThrough(transform)

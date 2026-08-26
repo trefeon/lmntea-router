@@ -1,10 +1,20 @@
 import type { Hono } from 'hono'
-import { getModelSpec } from '../config/models.js'
-import { getProviderForModel } from '../config/providers.js'
+import { MODEL_REGISTRY, getModelSpec } from '../config/models.js'
+import { PROVIDERS, getProviderForModel } from '../config/providers.js'
 import { validationError } from '../middleware/errors.js'
 import { clampBody } from '../normalizer/clamp.js'
 import { sanitizeParams } from '../normalizer/sanitize.js'
 import { reconcileThinking } from '../normalizer/thinking.js'
+import {
+  type BreakerState,
+  classifyError,
+  createBreakerState,
+  isOpen,
+  maybeClose,
+  recordFailure,
+  recordSuccess,
+} from '../router/circuitBreaker.js'
+import { routeCombo } from '../router/combo.js'
 import {
   RELAY_TIMEOUT_MS,
   dispatch,
@@ -16,10 +26,120 @@ import { createMockSSEStream, sseHeaders } from '../streaming/sse.js'
 import { withStallWatchdog } from '../streaming/stallWatchdog.js'
 import type { Env } from '../types.js'
 
-function buildUpstreamUrl(model: string): string {
-  const provider = getProviderForModel(model)
-  const base = provider?.baseUrl ?? 'https://opencode.ai/zen/v1'
-  return `${base.replace(/\/$/, '')}/chat/completions`
+// ---------------------------------------------------------------------------
+// Stage 4 router wiring — per-provider circuit breaker + combo candidate order
+// ---------------------------------------------------------------------------
+
+/** Module-level breaker state per provider; mutated only via pure transitions. */
+const breakerStates = new Map<string, BreakerState>()
+
+function breakerFor(provider: string): BreakerState {
+  let st = breakerStates.get(provider)
+  if (!st) {
+    st = createBreakerState()
+    breakerStates.set(provider, st)
+  }
+  return st
+}
+
+/** Test-only: clear module-level breaker state between tests. */
+export function __resetBreakerStatesForTests(): void {
+  breakerStates.clear()
+}
+
+interface UpstreamCandidate {
+  provider: string
+  url: string
+}
+
+function primaryProviderFor(model: string): string {
+  const prefix = model.split('/')[0] ?? ''
+  if (prefix.length > 0 && PROVIDERS[prefix] !== undefined) return prefix
+  const spec = getModelSpec(model)
+  return spec?.provider ?? 'unknown'
+}
+
+function providerUrl(provider: string, pathSuffix: string): string | null {
+  const spec = PROVIDERS[provider]
+  if (!spec) return null
+  return `${spec.baseUrl.replace(/\/$/, '')}${pathSuffix}`
+}
+
+/**
+ * Other registered providers hosting the same model slug with a wire format
+ * compatible with this route (fallback/priority candidates from PROVIDERS).
+ */
+function alternateProvidersFor(
+  model: string,
+  wireFormat: 'openai' | 'claude',
+): string[] {
+  const slash = model.indexOf('/')
+  const slug = slash > 0 ? model.slice(slash + 1) : ''
+  if (slug.length === 0) return []
+  const exclude = primaryProviderFor(model)
+  const out: string[] = []
+  for (const [id, spec] of Object.entries(MODEL_REGISTRY)) {
+    const cut = id.indexOf('/')
+    if (cut <= 0 || id.slice(cut + 1) !== slug) continue
+    const name = id.slice(0, cut)
+    if (
+      name === exclude ||
+      out.includes(name) ||
+      PROVIDERS[name] === undefined
+    ) {
+      continue
+    }
+    const fmt = PROVIDERS[name]?.format
+    const compatible =
+      wireFormat === 'openai'
+        ? fmt === undefined || fmt === 'openai'
+        : fmt === 'claude'
+    if (!compatible) continue
+    out.push(name)
+  }
+  return out
+}
+
+/**
+ * Ordered upstream candidates for a model: primary provider first, then any
+ * compatible alternate providers. When more than one candidate exists the
+ * combo router orders them (fallback strategy, healthy-first via live breaker
+ * states). Single-provider models keep a one-element list.
+ */
+function buildUpstreamCandidates(
+  model: string,
+  pathSuffix: string,
+  wireFormat: 'openai' | 'claude',
+): UpstreamCandidate[] {
+  const primaryName = primaryProviderFor(model)
+  const primarySpec = getProviderForModel(model)
+  const primaryBase = (
+    primarySpec?.baseUrl ?? 'https://opencode.ai/zen/v1'
+  ).replace(/\/$/, '')
+  const primaryUrl = `${primaryBase}${pathSuffix}`
+  const alts = alternateProvidersFor(model, wireFormat)
+  if (alts.length === 0) {
+    return [{ provider: primaryName, url: primaryUrl }]
+  }
+  const ordered = routeCombo(
+    [primaryName, ...alts].map((name) => ({ model: name })),
+    { strategy: 'fallback', breakerState: breakerStates },
+  )
+  const names = ordered.map((cand) => cand.model)
+  if (!names.includes(primaryName)) names.unshift(primaryName)
+  const candidates: UpstreamCandidate[] = []
+  for (const name of names) {
+    const url =
+      name === primaryName ? primaryUrl : providerUrl(name, pathSuffix)
+    if (url) candidates.push({ provider: name, url })
+  }
+  return candidates.length > 0
+    ? candidates
+    : [{ provider: primaryName, url: primaryUrl }]
+}
+
+function routerActionHeaders(actions: string[]): Record<string, string> {
+  return actions.length > 0 ? { 'x-router-action': actions.join(',') } : {}
 }
 
 export function mountChat(app: Hono<Env>) {
@@ -80,114 +200,172 @@ export function mountChat(app: Hono<Env>) {
       }
 
       const relayUrls = getDefaultRelayPool()
-      const upstreamUrl = buildUpstreamUrl(data.model)
+      const candidates = buildUpstreamCandidates(
+        data.model,
+        '/chat/completions',
+        'openai',
+      )
       const upstreamBody = JSON.stringify(normalized ?? data)
 
-      let upstreamResponse: Response | null = null
+      let chosen: Response | null = null
       let useMockFallback = false
+      const routerActions: string[] = []
+      let lastStatus: number | null = null
+      let lastErrorText = ''
+      let lastErrorMessage = ''
+      let timedOut = false
+      let noBody = false
 
-      try {
-        upstreamResponse = await dispatch({
-          url: upstreamUrl,
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            accept: 'text/event-stream',
-          },
-          body: upstreamBody,
-          signal: upstreamController.signal,
-          relayUrls,
-          timeoutMs: RELAY_TIMEOUT_MS,
-        })
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        if (
-          msg.includes('Forbidden private') ||
-          msg.includes('private/internal target') ||
-          msg.includes('Forbidden protocol') ||
-          msg.includes('Credentials in URL')
-        ) {
-          return c.json(
-            {
-              error: {
-                type: 'invalid_request_error',
-                message: msg,
-                code: 'SSRF_FORBIDDEN',
-              },
-            },
-            403,
-          )
+      for (const cand of candidates) {
+        // Stage 4 — consult the provider breaker before every dispatch attempt.
+        const now = Date.now()
+        const st = maybeClose(breakerFor(cand.provider), now)
+        breakerStates.set(cand.provider, st)
+        if (isOpen(st, now)) {
+          routerActions.push(`breaker_skip:${cand.provider}`)
+          continue
         }
-        if (err instanceof DOMException && err.name === 'AbortError') {
-          const isClientAbort =
-            upstreamController.signal.aborted && rawSignal?.aborted
-          if (!isClientAbort) {
+
+        let upstreamResponse: Response | null = null
+        try {
+          upstreamResponse = await dispatch({
+            url: cand.url,
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              accept: 'text/event-stream',
+            },
+            body: upstreamBody,
+            signal: upstreamController.signal,
+            relayUrls,
+            timeoutMs: RELAY_TIMEOUT_MS,
+          })
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          if (
+            msg.includes('Forbidden private') ||
+            msg.includes('private/internal target') ||
+            msg.includes('Forbidden protocol') ||
+            msg.includes('Credentials in URL')
+          ) {
+            return c.json(
+              {
+                error: {
+                  type: 'invalid_request_error',
+                  message: msg,
+                  code: 'SSRF_FORBIDDEN',
+                },
+              },
+              403,
+              routerActionHeaders(routerActions),
+            )
+          }
+          if (err instanceof DOMException && err.name === 'AbortError') {
+            const isClientAbort =
+              upstreamController.signal.aborted && rawSignal?.aborted
+            if (isClientAbort) {
+              // client aborted — close quietly
+              return new Response(null, { status: 499 })
+            }
+            // upstream timeout — classifyError → FAILOVER_NEXT_MODEL
+            timedOut = true
+            breakerStates.set(cand.provider, recordFailure(st, Date.now()))
+            routerActions.push(`failover:${cand.provider}`)
+            continue
+          }
+          // network-level failure — classifyError(null) → FAILOVER_NEXT_MODEL
+          lastErrorMessage = msg
+          breakerStates.set(cand.provider, recordFailure(st, Date.now()))
+          routerActions.push(`failover:${cand.provider}`)
+          continue
+        }
+
+        if (!upstreamResponse.ok) {
+          const action = classifyError(upstreamResponse.status)
+          if (action === 'REJECT_IMMEDIATE') {
+            // deterministic client error — abort, no retry/failover (prod).
+            // Test runtime keeps the hermetic contract: any upstream failure
+            // falls through to the mock SSE stream.
+            const isTestEnv =
+              process.env.VITEST === 'true' || process.env.NODE_ENV === 'test'
+            if (isTestEnv) {
+              useMockFallback = true
+              break
+            }
+            const text = await upstreamResponse.text().catch(() => '')
             return c.json(
               {
                 error: {
                   type: 'server_error',
-                  message: 'Upstream timeout',
-                  code: 'TIMEOUT',
+                  message: text || `Upstream ${upstreamResponse.status}`,
+                  code: String(upstreamResponse.status),
                 },
               },
-              504,
+              upstreamResponse.status as 400,
+              routerActionHeaders(routerActions),
             )
           }
-          // client aborted — close quietly
-          return new Response(null, { status: 499 })
+          if (action === 'ROTATE_ACCOUNT_IN_POOL') {
+            // per-key auth/quota issue — mark rotate; account pool not wired
+            // yet, so surface the action and fail over to the next candidate
+            // without penalizing the provider breaker.
+            lastStatus = upstreamResponse.status
+            lastErrorText = await upstreamResponse.text().catch(() => '')
+            routerActions.push(`rotate:${cand.provider}`)
+            continue
+          }
+          // FAILOVER_NEXT_MODEL (5xx/408) — record failure, try next candidate
+          lastStatus = upstreamResponse.status
+          lastErrorText = await upstreamResponse.text().catch(() => '')
+          breakerStates.set(cand.provider, recordFailure(st, Date.now()))
+          routerActions.push(`failover:${cand.provider}`)
+          continue
         }
-        const isTestEnv =
-          process.env.VITEST === 'true' || process.env.NODE_ENV === 'test'
-        if (isTestEnv) {
-          useMockFallback = true
-        } else {
-          return c.json(
-            {
-              error: {
-                type: 'server_error',
-                message: msg,
-                code: 'UPSTREAM_ERROR',
-              },
-            },
-            502,
-          )
+
+        if (!upstreamResponse.body) {
+          noBody = true
+          breakerStates.set(cand.provider, recordFailure(st, Date.now()))
+          routerActions.push(`failover:${cand.provider}`)
+          continue
         }
+
+        // success — clears the sliding failure window
+        breakerStates.set(cand.provider, recordSuccess(st))
+        chosen = upstreamResponse
+        break
       }
 
-      // handle non-2xx upstream (when dispatch returned response with 4xx/5xx)
-      if (upstreamResponse && !upstreamResponse.ok && !useMockFallback) {
+      if (!chosen) {
         const isTestEnv =
           process.env.VITEST === 'true' || process.env.NODE_ENV === 'test'
         if (isTestEnv) {
           useMockFallback = true
-        } else {
-          const text = await upstreamResponse.text().catch(() => '')
-          const status = upstreamResponse.status as
-            | 400
-            | 401
-            | 403
-            | 429
-            | 500
-            | 502
-            | 503
-            | 504
-          const mappedStatus = status >= 500 ? 502 : status
+        } else if (timedOut) {
           return c.json(
             {
               error: {
                 type: 'server_error',
-                message: text || `Upstream ${upstreamResponse.status}`,
-                code: String(upstreamResponse.status),
+                message: 'Upstream timeout',
+                code: 'TIMEOUT',
+              },
+            },
+            504,
+            routerActionHeaders(routerActions),
+          )
+        } else if (lastStatus !== null) {
+          const mappedStatus = lastStatus >= 500 ? 502 : lastStatus
+          return c.json(
+            {
+              error: {
+                type: 'server_error',
+                message: lastErrorText || `Upstream ${lastStatus}`,
+                code: String(lastStatus),
               },
             },
             mappedStatus as 502,
+            routerActionHeaders(routerActions),
           )
-        }
-      }
-
-      let bodyStream: ReadableStream<Uint8Array>
-      if (useMockFallback || !upstreamResponse || !upstreamResponse.body) {
-        if (!useMockFallback && upstreamResponse && !upstreamResponse.body) {
+        } else if (noBody) {
           return c.json(
             {
               error: {
@@ -196,31 +374,53 @@ export function mountChat(app: Hono<Env>) {
               },
             },
             502,
+            routerActionHeaders(routerActions),
+          )
+        } else {
+          return c.json(
+            {
+              error: {
+                type: 'server_error',
+                message: lastErrorMessage || 'Upstream error',
+                code: 'UPSTREAM_ERROR',
+              },
+            },
+            502,
+            routerActionHeaders(routerActions),
           )
         }
+      }
+
+      let bodyStream: ReadableStream<Uint8Array>
+      if (useMockFallback || !chosen) {
         bodyStream = createMockSSEStream({
           model: data.model,
           format: 'openai',
           signal: upstreamController.signal,
         })
       } else {
-        bodyStream = upstreamResponse.body as ReadableStream<Uint8Array>
+        bodyStream = chosen.body as ReadableStream<Uint8Array>
       }
 
-      const withKeepalive = withEarlyKeepalive(bodyStream, {
-        signal: upstreamController.signal,
-      })
-      const withWatchdog = withStallWatchdog(withKeepalive, {
+      // Stage 6 composition — watchdog wraps the RAW upstream stream so
+      // keepalive comment frames cannot reset its timer (pre-first-byte stalls
+      // still fire the synthetic finish); keepalive then decorates watchdog
+      // output so the client keeps receiving pings while stalled.
+      const withWatchdog = withStallWatchdog(bodyStream, {
         format: 'openai',
         signal: upstreamController.signal,
         upstreamController,
+      })
+      const withKeepalive = withEarlyKeepalive(withWatchdog, {
+        signal: upstreamController.signal,
       })
       const extra: Record<string, string> = {}
       if (clampedHeader) extra['x-clamped-max-tokens'] = clampedHeader
       if (strippedHeader) extra['x-sanitize-stripped'] = strippedHeader
       const requestId = c.get('requestId')
       if (requestId) extra['x-request-id'] = requestId
-      return new Response(withWatchdog, {
+      Object.assign(extra, routerActionHeaders(routerActions))
+      return new Response(withKeepalive, {
         status: 200,
         headers: sseHeaders(extra),
       })

@@ -169,7 +169,6 @@ function enforceAdjacency(messages: ChatMessage[]): ChatMessage[] {
       const remaining = new Set<string>(expectedIds)
       const collected: ChatMessage[] = []
       const deferredUsers: ChatMessage[] = []
-      const deferredIndices: number[] = []
 
       // Look ahead until next assistant (exclusive) or end
       for (let j = i + 1; j < cloned.length; j++) {
@@ -215,11 +214,9 @@ function enforceAdjacency(messages: ChatMessage[]): ChatMessage[] {
             nxt.role === 'developer'
           ) {
             deferredUsers.push(cloneMessage(nxt))
-            deferredIndices.push(j)
             consumed.add(j)
           } else if (nxt.role !== 'assistant' && nxt.role !== 'tool') {
             deferredUsers.push(cloneMessage(nxt))
-            deferredIndices.push(j)
             consumed.add(j)
           }
         } else {

@@ -1,3 +1,5 @@
+import { ChatCompletionRequestSchema } from '../schemas/chat.js'
+
 export interface GeminiPart {
   text?: string
   inlineData?: { mimeType: string; data: string }
@@ -31,6 +33,7 @@ const effortToGeminiBudget: Record<string, number> = {
   none: 0,
   off: 0,
   low: 1024,
+  minimal: 512,
   medium: 8192,
   high: 24576,
   max: 32768,
@@ -308,9 +311,12 @@ function buildGenerationConfig(
   return Object.keys(cfg).length > 0 ? cfg : undefined
 }
 
-export function openaiToGemini(
-  body: Record<string, unknown>,
-): Record<string, unknown> {
+export function openaiToGemini(input: unknown): Record<string, unknown> {
+  const parsed = ChatCompletionRequestSchema.safeParse(input)
+  if (!parsed.success) {
+    throw parsed.error
+  }
+  const body = parsed.data as unknown as Record<string, unknown>
   const messages = Array.isArray(body.messages)
     ? (body.messages as unknown[])
     : []
@@ -379,11 +385,33 @@ export function openaiToGemini(
         (rec.thoughtSignature as unknown) ??
         (rec.thought_signature as unknown) ??
         (rec.signature as unknown)
+      // Merge bare thoughtSignature onto an adjacent part instead of emitting
+      // an invalid standalone {thoughtSignature}-only part.
+      let pendingSig: string | undefined
       if (typeof sig === 'string' && sig.length > 0) {
-        parts.push({ thoughtSignature: sig })
+        const last = parts[parts.length - 1]
+        if (last && last.thoughtSignature === undefined) {
+          last.thoughtSignature = sig
+        } else {
+          pendingSig = sig
+        }
       }
 
-      parts.push(...contentToParts(rec.content))
+      const contentParts = contentToParts(rec.content)
+      const firstContent = contentParts[0]
+      if (
+        pendingSig !== undefined &&
+        firstContent &&
+        firstContent.thoughtSignature === undefined
+      ) {
+        firstContent.thoughtSignature = pendingSig
+        pendingSig = undefined
+      }
+      parts.push(...contentParts)
+
+      if (pendingSig !== undefined) {
+        parts.push({ thoughtSignature: pendingSig })
+      }
 
       if (Array.isArray(rec.tool_calls)) {
         for (const tc of rec.tool_calls as unknown[]) {
@@ -424,11 +452,13 @@ export function openaiToGemini(
             (r.thoughtSignature as unknown) ??
             (r.thought_signature as unknown) ??
             (r.signature as unknown)
+          const fcPart: GeminiPart = { functionCall: { name, args } }
+          // Attach the call's thought signature to the functionCall part
+          // itself rather than emitting a bare standalone part.
           if (typeof tcSig === 'string' && tcSig.length > 0) {
-            parts.push({ thoughtSignature: tcSig })
+            fcPart.thoughtSignature = tcSig
           }
-
-          parts.push({ functionCall: { name, args } })
+          parts.push(fcPart)
 
           const id = typeof r.id === 'string' ? r.id : undefined
           if (id && nameRaw) toolIdToName.set(id, sanitizeIdentifier(nameRaw))
@@ -446,20 +476,25 @@ export function openaiToGemini(
             : undefined
       const nameFromMap = toolCallId ? toolIdToName.get(toolCallId) : undefined
       const explicitName = typeof rec.name === 'string' ? rec.name : undefined
-      const isOrphan = Boolean(toolCallId && !nameFromMap && !explicitName)
-
-      if (isOrphan) {
+      // Malformed tool outputs (missing id, or an id that matches no known
+      // functionCall and carries no explicit name) cannot reference a call,
+      // so they degrade to user-visible text instead of fabricating names.
+      if (!toolCallId || (!nameFromMap && !explicitName)) {
         const rawContent = rec.content
+        const prefix = toolCallId
+          ? `[Unmatched tool output ${toolCallId}]: `
+          : '[Unmatched tool output]: '
         const textFallback =
           typeof rawContent === 'string'
-            ? `[Unmatched tool output ${toolCallId}]: ${rawContent}`
-            : `[Unmatched tool output ${toolCallId}]: ${JSON.stringify(rawContent)}`
+            ? `${prefix}${rawContent}`
+            : `${prefix}${JSON.stringify(rawContent)}`
         rawContents.push({ role: 'user', parts: [{ text: textFallback }] })
         continue
       }
 
-      let fnName = nameFromMap ?? explicitName ?? toolCallId ?? 'unknown_tool'
-      fnName = sanitizeIdentifier(fnName)
+      const fnName = sanitizeIdentifier(
+        nameFromMap ?? explicitName ?? toolCallId,
+      )
 
       const rawContent = rec.content
       let response: Record<string, unknown>
