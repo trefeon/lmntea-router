@@ -12,7 +12,7 @@ import { mountMessages } from './routes/messages.js'
 import { mountModels } from './routes/models.js'
 import type { Env } from './types.js'
 
-const VERSION = '0.1.0'
+const VERSION = '0.2.0'
 
 export function createApp() {
   const app = new Hono<Env>()

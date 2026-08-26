@@ -15,7 +15,7 @@ describe('GET /health — canonical P0', () => {
     }
     expect(body.status).toBe('ok')
     expect(typeof body.uptime).toBe('number')
-    expect(body.version).toBe('0.1.0')
+    expect(body.version).toBe('0.2.0')
   })
 
   it('GET /health/live returns 200 {status:"ok"}', async () => {

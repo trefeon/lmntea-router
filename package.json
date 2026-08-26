@@ -1,6 +1,6 @@
 {
   "name": "lmntea-router",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "lmntea-router — Hono LLM gateway for coding harnesses (OpenAI ↔ Anthropic ↔ Gemini)",
   "type": "module",
   "packageManager": "pnpm@9.12.3",
