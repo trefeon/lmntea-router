@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MODEL_REGISTRY, getModelSpec } from '../../src/config/models.js'
 import { PROVIDERS, getProviderForModel } from '../../src/config/providers.js'
@@ -10,10 +11,16 @@ import { clampBody } from '../../src/normalizer/clamp.js'
 import { sanitizeParams } from '../../src/normalizer/sanitize.js'
 
 describe('P8 Aggregators — providers 26', () => {
-  it('PROVIDERS grows per slice (P8 26 → P9 regional +5 = 31) — bounded', () => {
+  it('PROVIDERS count matches source file (anti-truncation, no fixed cap)', () => {
+    const src = readFileSync(
+      new URL('../../src/config/providers.ts', import.meta.url),
+      'utf8',
+    )
+    // top-level provider entries: two-space indented keys inside PROVIDERS object
+    const fileCount = [...src.matchAll(/^ {2}'?[\w-]+'?: \{\n/gm)].length
     const count = Object.keys(PROVIDERS).length
+    expect(count).toBe(fileCount)
     expect(count).toBeGreaterThanOrEqual(12)
-    expect(count).toBeLessThanOrEqual(40)
   })
 
   it('openrouter ProviderSpec correct', () => {

@@ -50,6 +50,7 @@ export function __resetBreakerStatesForTests(): void {
 interface UpstreamCandidate {
   provider: string
   url: string
+  allowPrivate?: boolean
 }
 
 function primaryProviderFor(model: string): string {
@@ -119,7 +120,13 @@ function buildUpstreamCandidates(
   const primaryUrl = `${primaryBase}${pathSuffix}`
   const alts = alternateProvidersFor(model, wireFormat)
   if (alts.length === 0) {
-    return [{ provider: primaryName, url: primaryUrl }]
+    return [
+      {
+        provider: primaryName,
+        url: primaryUrl,
+        allowPrivate: PROVIDERS[primaryName]?.allowPrivate === true,
+      },
+    ]
   }
   const ordered = routeCombo(
     [primaryName, ...alts].map((name) => ({ model: name })),
@@ -131,7 +138,12 @@ function buildUpstreamCandidates(
   for (const name of names) {
     const url =
       name === primaryName ? primaryUrl : providerUrl(name, pathSuffix)
-    if (url) candidates.push({ provider: name, url })
+    if (url)
+      candidates.push({
+        provider: name,
+        url,
+        allowPrivate: PROVIDERS[name]?.allowPrivate === true,
+      })
   }
   return candidates.length > 0
     ? candidates
@@ -239,6 +251,7 @@ export function mountChat(app: Hono<Env>) {
             signal: upstreamController.signal,
             relayUrls,
             timeoutMs: RELAY_TIMEOUT_MS,
+            allowPrivate: cand.allowPrivate === true,
           })
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)

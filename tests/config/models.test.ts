@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { MODEL_REGISTRY } from '../../src/config/models.js'
 
@@ -30,12 +31,18 @@ describe('MODEL_REGISTRY invariants', () => {
       expect(spec.id).toBe(key)
     }
   })
-  it('has >=78 entries and respects normative caps (per_provider)', () => {
+  it('registry count matches source file (anti-truncation, no fixed cap)', () => {
+    // Count literal entries in src/config/models.ts and compare with the
+    // imported registry — catches silent truncation without an arbitrary
+    // upper bound that breaks on every slice.
+    const src = readFileSync(
+      new URL('../../src/config/models.ts', import.meta.url),
+      'utf8',
+    )
+    const fileCount = [...src.matchAll(/^ {2}'[^']+': \{/gm)].length
     const entries = Object.entries(MODEL_REGISTRY)
-    // P7 landed 8→79; P9 --limit 10 slices grow this bound with presence checks below
+    expect(entries.length).toBe(fileCount)
     expect(entries.length).toBeGreaterThanOrEqual(78)
-    // slice bound — grows per P9 --limit 10 PR, not arbitrary
-    expect(entries.length).toBeLessThanOrEqual(300)
     // presence: critical caps verbatim from modelSpecs.ts (no silent truncation)
     for (const id of [
       'minimax/minimax-m3', // modelSpecs.ts:619 — 1048576/512000 cap32768

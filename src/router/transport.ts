@@ -17,6 +17,12 @@ export interface ProxyFetchOptions {
   relayAuthSecret?: string
   timeoutMs?: number
   signal?: AbortSignal
+  /**
+   * Opt-in escape hatch for local providers (ollama/vLLM/LM Studio on loopback).
+   * Skips ONLY the private-hostname check — protocol allowlist and
+   * credentials-in-URL rejection still apply. Never enable for remote relays.
+   */
+  allowPrivate?: boolean
 }
 
 export interface DispatchOptions {
@@ -29,6 +35,8 @@ export interface DispatchOptions {
   relayAuthSecret?: string
   timeoutMs?: number
   fallbackToDirect?: boolean
+  /** See ProxyFetchOptions.allowPrivate. */
+  allowPrivate?: boolean
 }
 
 export interface RelayRequestInit extends RequestInit {
@@ -272,7 +280,7 @@ export async function proxyFetch(
   }
   if (!['http:', 'https:'].includes(target.protocol))
     throw new Error(`Forbidden protocol: ${target.protocol}`)
-  if (isPrivateHostname(target.hostname))
+  if (!opts.allowPrivate && isPrivateHostname(target.hostname))
     throw new Error(`Forbidden private/internal target: ${target.hostname}`)
   if (target.username || target.password)
     throw new Error('Credentials in URL forbidden')
@@ -393,6 +401,7 @@ export async function dispatch(opts: DispatchOptions): Promise<Response> {
       const proxyOpts: ProxyFetchOptions = { relayUrl, timeoutMs }
       if (relayAuth !== undefined) proxyOpts.relayAuthSecret = relayAuth
       if (opts.signal !== undefined) proxyOpts.signal = opts.signal
+      if (opts.allowPrivate) proxyOpts.allowPrivate = true
       const res = await proxyFetch(opts.url, proxyInit, proxyOpts)
       if (res.status >= 500 && res.status <= 599) {
         lastError = new Error(`Relay ${relayUrl} returned ${res.status}`)

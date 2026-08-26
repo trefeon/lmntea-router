@@ -66,6 +66,25 @@ describe('transport — isPrivateHostname SSRF guard', () => {
     )
   })
 
+  it('proxyFetch allowPrivate opt-in permits loopback but still blocks credentials', async () => {
+    const fetchMock = vi.fn(async () => new Response('ok'))
+    vi.stubGlobal('fetch', fetchMock)
+    const res = await proxyFetch(
+      'http://localhost:11434/api/tags',
+      {},
+      { allowPrivate: true },
+    )
+    expect(res.status).toBe(200)
+    expect(fetchMock).toHaveBeenCalledOnce()
+    // protocol + credential checks stay enforced even with allowPrivate
+    await expect(
+      proxyFetch('ftp://localhost/x', {}, { allowPrivate: true }),
+    ).rejects.toThrow(/Forbidden protocol/)
+    await expect(
+      proxyFetch('http://user:pass@localhost/x', {}, { allowPrivate: true }),
+    ).rejects.toThrow(/Credentials in URL/)
+  })
+
   it('proxyFetch throws on forbidden protocol and credentials', async () => {
     vi.stubGlobal(
       'fetch',

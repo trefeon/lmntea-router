@@ -7,6 +7,12 @@ export interface ProviderSpec {
   timeoutMs: number
   passthroughModels?: boolean
   format?: string
+  /**
+   * Opt-in for local providers on loopback (ollama/vLLM/LM Studio):
+   * bypasses the outbound private-hostname SSRF check for THIS provider only.
+   * Protocol allowlist + credentials-in-URL rejection still apply.
+   */
+  allowPrivate?: boolean
 }
 
 export const PROVIDERS: Record<string, ProviderSpec> = {
@@ -107,6 +113,7 @@ export const PROVIDERS: Record<string, ProviderSpec> = {
     apiKeyEnv: '',
     timeoutMs: 30000,
     format: 'ollama',
+    allowPrivate: true,
   },
   vertex: {
     // source: reference/9router/open-sse/providers/registry/vertex.js:2
