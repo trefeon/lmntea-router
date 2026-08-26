@@ -25,6 +25,13 @@ export const PROVIDERS: Record<string, ProviderSpec> = {
     passthroughModels: true,
     format: 'openai',
   },
+  chutes: {
+    // source: reference/9router/open-sse/providers/registry/chutes.js:2
+    baseUrl: 'https://llm.chutes.ai/v1/chat/completions',
+    apiKeyEnv: 'CHUTES_API_KEY',
+    timeoutMs: 30000,
+    format: 'openai',
+  },
   opencode: {
     // source: src/config/providers.ts c7795ec (original, research/per_model_failure_analysis.md:23)
     baseUrl: 'https://opencode.ai/zen/v1',
