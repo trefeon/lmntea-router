@@ -10,10 +10,10 @@ import { clampBody } from '../../src/normalizer/clamp.js'
 import { sanitizeParams } from '../../src/normalizer/sanitize.js'
 
 describe('P8 Aggregators — providers 26', () => {
-  it('PROVIDERS has ~26 entries (2 base + 10 frontier + 14 aggregators) — P7 may have 12, allow growth', () => {
+  it('PROVIDERS grows per slice (P8 26 → P9 regional +5 = 31) — bounded', () => {
     const count = Object.keys(PROVIDERS).length
     expect(count).toBeGreaterThanOrEqual(12)
-    expect(count).toBeLessThanOrEqual(30)
+    expect(count).toBeLessThanOrEqual(40)
   })
 
   it('openrouter ProviderSpec correct', () => {

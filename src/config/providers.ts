@@ -78,6 +78,44 @@ export const PROVIDERS: Record<string, ProviderSpec> = {
     timeoutMs: 30000,
     format: 'openai',
   },
+  alibaba: {
+    // source: reference/OmniRoute/open-sse/config/providers/registry/alibaba/index.ts:4 | reference/OmniRoute/src/shared/constants/modelSpecs.ts:483
+    baseUrl:
+      'https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions',
+    apiKeyEnv: 'ALIBABA_API_KEY',
+    timeoutMs: 30000,
+    passthroughModels: true,
+    format: 'openai',
+  },
+  cohere: {
+    // source: reference/9router/open-sse/providers/registry/cohere.js:2
+    baseUrl: 'https://api.cohere.com/compatibility/v1/chat/completions',
+    apiKeyEnv: 'COHERE_API_KEY',
+    timeoutMs: 30000,
+    format: 'openai',
+  },
+  mistral: {
+    // source: reference/9router/open-sse/providers/registry/mistral.js:2
+    baseUrl: 'https://api.mistral.ai/v1/chat/completions',
+    apiKeyEnv: 'MISTRAL_API_KEY',
+    timeoutMs: 30000,
+    format: 'openai',
+  },
+  ollama: {
+    // source: reference/9router/open-sse/providers/registry/ollama.js:2
+    baseUrl: 'http://localhost:11434',
+    apiKeyEnv: '',
+    timeoutMs: 30000,
+    format: 'ollama',
+  },
+  vertex: {
+    // source: reference/9router/open-sse/providers/registry/vertex.js:2
+    baseUrl: 'https://aiplatform.googleapis.com',
+    apiKeyEnv: 'VERTEX_API_KEY',
+    timeoutMs: 30000,
+    passthroughModels: true,
+    format: 'gemini',
+  },
   'xiaomi-mimo': {
     // source: reference/OmniRoute/open-sse/config/providers/registry/xiaomi-mimo/index.ts:5 | reference/OmniRoute/src/shared/constants/modelSpecs.ts:523
     baseUrl: 'https://api.xiaomimimo.com/v1',
