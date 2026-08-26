@@ -24,5 +24,12 @@
     "allowSyntheticDefaultImports": true
   },
   "include": ["src/**/*", "tests/**/*"],
-  "exclude": ["node_modules", "dist", "devdocs", "research", "reference"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "devdocs",
+    "research",
+    "reference",
+    "tests/generated"
+  ]
 }
