@@ -16,6 +16,14 @@
  *   pnpm import:provider --provider openai,anthropic --source all
  *   pnpm import:provider --all
  *   pnpm import:provider --provider openai --dry-run
+ *   pnpm import:provider --provider perplexity --source all --merge
+ *
+ * --merge is append-only: it reads the COMMITTED src/config/models.ts and
+ * src/config/providers.ts, extracts only entries absent from them from the
+ * generated text, inserts them alphabetically inside MODEL_REGISTRY /
+ * PROVIDERS, and writes back — existing entry bodies and tail functions are
+ * untouched by construction. Without --merge both files are regenerated
+ * wholesale (historical behavior).
  *
  * Node 20+ ESM, no deps beyond zod + fetch (global).
  */
@@ -102,6 +110,7 @@ const CliSchema = z.object({
   limit: z.coerce.number().int().positive().optional(),
   all: z.boolean().optional(),
   dryRun: z.boolean().optional(),
+  merge: z.boolean().optional(),
   help: z.boolean().optional(),
 })
 
@@ -148,6 +157,8 @@ function parseArgs(
       raw.all = true
     } else if (a === '--dry-run' || a === '--dryRun') {
       raw.dryRun = true
+    } else if (a === '--merge') {
+      raw.merge = true
     } else if (a === '--help' || a === '-h') {
       raw.help = true
     }
@@ -175,8 +186,10 @@ Options:
   --limit <n>       Limit models per provider (for openrouter sampling)
   --all             Import all discovered providers
   --dry-run         Print plan without writing files
+  --merge           Append-only update of the committed config files: insert
+                    only entries they lack (alphabetically), never rewrite
+                    existing entries or tail functions. Default off.
   --help            Show this help
-
 Sources:
   - omnroute: ${OMNI_MODELSPEC_PATH} (MODEL_SPECS, citations with line numbers)
   - 9router : ${NINE_REGISTRY_DIR}/*.js (baseUrl/format/passthroughModels)
@@ -903,6 +916,134 @@ function parseExistingProviders(): Map<string, GeneratedProvider> {
 }
 
 // ---------------------------------------------------------------------------
+// Merge mode — append-only splice into the committed config files
+// ---------------------------------------------------------------------------
+
+// Entry start inside a COMMITTED registry. models.ts quotes every key;
+// providers.ts leaves simple identifiers bare ('xiaomi-mimo' is quoted).
+const COMMITTED_ENTRY_RE = /^ {2}(?:'([^']+)'|([^\s:{}'"]+)): \{/gm
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/** Offset of MODEL_REGISTRY's closing '}' in committed models.ts. */
+function modelsRegistryEnd(committed: string): number {
+  const anchor = committed.indexOf('}\n\nexport function getModelSpec')
+  if (anchor < 0) {
+    throw new Error(
+      '--merge: anchor "}\\n\\nexport function getModelSpec" not found in committed models.ts; refusing to splice',
+    )
+  }
+  return anchor
+}
+
+/** Offset of PROVIDERS' closing '}' in committed providers.ts. */
+function providersRegistryEnd(committed: string): number {
+  const anchor = committed.indexOf('\nexport function getProviderForModel')
+  if (anchor < 0) {
+    throw new Error(
+      '--merge: anchor "\\nexport function getProviderForModel" not found in committed providers.ts; refusing to splice',
+    )
+  }
+  return committed.lastIndexOf('}', anchor)
+}
+
+/**
+ * Extract one complete entry block ("  '<key>': { … },\n") from generated
+ * registry text. The close is anchored on "\n  },\n": entry bodies are
+ * indented >= 4 spaces, so that line always ends THIS entry.
+ */
+function extractGeneratedBlock(generated: string, key: string): string | null {
+  const re = new RegExp(
+    `^ {2}'${escapeRegExp(key)}': \\{[\\s\\S]*?\\n {2}\\},\\n`,
+    'm',
+  )
+  return re.exec(generated)?.[0] ?? null
+}
+
+/**
+ * --merge core for one config file: insert ONLY entries absent from the
+ * committed file into its registry, alphabetically, leaving every other byte
+ * (existing entry bodies, tail functions) untouched by construction.
+ *
+ * `validateBlock` returns null when the generated block is safe to write,
+ * or a rejection reason that is logged loudly and skips the block.
+ * Returns the number of blocks inserted (0 => file not written).
+ */
+function spliceNewEntriesIntoCommitted(
+  absPath: string,
+  generated: string,
+  candidates: Iterable<string>,
+  label: string,
+  registryEndOf: (committed: string) => number,
+  validateBlock?: (key: string, block: string) => string | null,
+): number {
+  let committed: string
+  try {
+    committed = readFileSync(absPath, 'utf8')
+  } catch (e) {
+    throw new Error(
+      `--merge: cannot read ${label} (${(e as Error).message}); run once without --merge to bootstrap it`,
+    )
+  }
+  const endOfRegistry = registryEndOf(committed)
+
+  // Existing entry starts, restricted to the registry region.
+  const existing: Array<{ key: string; offset: number }> = []
+  for (const m of committed.matchAll(COMMITTED_ENTRY_RE)) {
+    if ((m.index ?? 0) >= endOfRegistry) break
+    existing.push({ key: (m[1] ?? m[2])!, offset: m.index! })
+  }
+  const known = new Set(existing.map((e) => e.key))
+
+  // Plan insertions in original-text coordinates. Candidates are visited in
+  // sorted order so same-offset buckets end up alphabetical; splicing later
+  // happens highest-offset-first, keeping lower coordinates valid.
+  const planned = new Map<number, string[]>()
+  let added = 0
+  for (const key of [...candidates].sort((a, b) => a.localeCompare(b))) {
+    if (known.has(key)) continue
+    const block = extractGeneratedBlock(generated, key)
+    if (block === null) {
+      console.error(
+        `[import-provider] merge ${label}: no block found for '${key}' in generated text; skipping`,
+      )
+      continue
+    }
+    const rejection = validateBlock?.(key, block)
+    if (rejection !== null && rejection !== undefined) {
+      console.error(
+        `[import-provider] merge ${label}: skipping '${key}': ${rejection}`,
+      )
+      continue
+    }
+    const after = existing.find((e) => e.key.localeCompare(key) > 0)
+    const offset = after ? after.offset : endOfRegistry
+    const bucket = planned.get(offset)
+    if (bucket) bucket.push(block)
+    else planned.set(offset, [block])
+    added++
+  }
+
+  if (added === 0) {
+    console.log(
+      `[import-provider] merged ${label}: +0 entries (already up to date)`,
+    )
+    return 0
+  }
+
+  let out = committed
+  for (const offset of [...planned.keys()].sort((a, b) => b - a)) {
+    out =
+      out.slice(0, offset) + planned.get(offset)!.join('') + out.slice(offset)
+  }
+  writeFileSync(absPath, out, 'utf8')
+  console.log(`[import-provider] merged ${label}: +${added} entries`)
+  return added
+}
+
+// ---------------------------------------------------------------------------
 // Main generation
 // ---------------------------------------------------------------------------
 
@@ -919,6 +1060,7 @@ async function main(): Promise<void> {
   const source = args.sourceNorm
   const limit = args.limit
   const dryRun = args.dryRun ?? false
+  const mergeMode = args.merge ?? false
 
   if (!args.all && providersFilter.length === 0) {
     console.error(
@@ -929,7 +1071,7 @@ async function main(): Promise<void> {
   }
 
   console.log(
-    `[import-provider] source=${source} providers=${providersFilter.length ? providersFilter.join(',') : '(all)'} limit=${limit ?? 'none'} dryRun=${dryRun}`,
+    `[import-provider] source=${source} providers=${providersFilter.length ? providersFilter.join(',') : '(all)'} limit=${limit ?? 'none'} dryRun=${dryRun} merge=${mergeMode}`,
   )
 
   // Load sources according to --source
@@ -1549,14 +1691,40 @@ async function main(): Promise<void> {
   providersTs +=
     '\nexport function isRelayProvider(id: string): boolean {\n  return PROVIDERS[id]?.relay === true\n}\n'
 
-  writeFileSync(resolve(ROOT, MODELS_OUT), modelsTs, 'utf8')
-  writeFileSync(resolve(ROOT, PROVIDERS_OUT), providersTs, 'utf8')
-  console.log(
-    `[import-provider] wrote ${MODELS_OUT} (${sortedModelKeys.length} models)`,
-  )
-  console.log(
-    `[import-provider] wrote ${PROVIDERS_OUT} (${sortedProvKeys.length} providers)`,
-  )
+  if (mergeMode) {
+    // Append-only mode: never regenerate. Splice only entries the committed
+    // registries lack, so hand-maintained bodies and tail functions survive.
+    const addedModels = spliceNewEntriesIntoCommitted(
+      resolve(ROOT, MODELS_OUT),
+      modelsTs,
+      mergedModels.keys(),
+      MODELS_OUT,
+      modelsRegistryEnd,
+      (_key, block) =>
+        /^ {4}maxOutputTokens:/m.test(block)
+          ? null
+          : 'generated block is missing required maxOutputTokens field',
+    )
+    const addedProviders = spliceNewEntriesIntoCommitted(
+      resolve(ROOT, PROVIDERS_OUT),
+      providersTs,
+      mergedProviders.keys(),
+      PROVIDERS_OUT,
+      providersRegistryEnd,
+    )
+    if (addedModels === 0 && addedProviders === 0) {
+      console.log('[import-provider] merge: nothing new to add')
+    }
+  } else {
+    writeFileSync(resolve(ROOT, MODELS_OUT), modelsTs, 'utf8')
+    writeFileSync(resolve(ROOT, PROVIDERS_OUT), providersTs, 'utf8')
+    console.log(
+      `[import-provider] wrote ${MODELS_OUT} (${sortedModelKeys.length} models)`,
+    )
+    console.log(
+      `[import-provider] wrote ${PROVIDERS_OUT} (${sortedProvKeys.length} providers)`,
+    )
+  }
 
   // Generate tests per provider
   const testDir = resolve(ROOT, TESTS_OUT_DIR)
