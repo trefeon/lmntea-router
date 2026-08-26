@@ -1494,6 +1494,7 @@ async function main(): Promise<void> {
     modelsTs += `    id: '${m.id}',\n`
     modelsTs += `    provider: '${m.provider}',\n`
     modelsTs += `    contextWindow: ${m.contextWindow},\n`
+    modelsTs += `    maxOutputTokens: ${m.maxOutputTokens},\n`
     if (m.minOutputTokens !== undefined)
       modelsTs += `    minOutputTokens: ${m.minOutputTokens},\n`
     if (m.thinkingBudgetCap !== undefined)

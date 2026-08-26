@@ -30,7 +30,7 @@ export const PROVIDERS: Record<string, ProviderSpec> = {
     format: 'claude',
   },
   bedrock: {
-    // source: AWS Bedrock OpenAI-compatible endpoint — https://bedrock-runtime.<region>.amazonaws.com/openai/v1 (AWS docs, us-east-1 default; registry bedrock/index.ts:4 has no static baseUrl)
+    // source: https://docs.aws.amazon.com/bedrock/latest/userguide/endpoints.html — OpenAI-compatible base URL pattern https://bedrock-runtime.{region}.amazonaws.com/openai/v1 (us-east-1 default; reference/OmniRoute .../registry/bedrock/index.ts:4 has no static baseUrl)
     baseUrl: 'https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1',
     apiKeyEnv: 'AWS_BEARER_TOKEN_BEDROCK',
     timeoutMs: 30_000,
