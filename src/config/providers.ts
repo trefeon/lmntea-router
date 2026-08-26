@@ -16,6 +16,15 @@ export interface ProviderSpec {
 }
 
 export const PROVIDERS: Record<string, ProviderSpec> = {
+  aimlapi: {
+    // source: reference/OmniRoute/open-sse/config/providers/registry/aimlapi/index.ts:4
+    baseUrl: 'https://api.aimlapi.com/v1/chat/completions',
+    apiKeyEnv: 'AIMLAPI_API_KEY',
+    relay: true,
+    timeoutMs: 30000,
+    passthroughModels: true,
+    format: 'openai',
+  },
   opencode: {
     // source: src/config/providers.ts c7795ec (original, research/per_model_failure_analysis.md:23)
     baseUrl: 'https://opencode.ai/zen/v1',

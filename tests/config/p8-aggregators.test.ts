@@ -17,7 +17,8 @@ describe('P8 Aggregators — providers 26', () => {
       'utf8',
     )
     // top-level provider entries: two-space indented keys inside PROVIDERS object
-    const fileCount = [...src.matchAll(/^ {2}'?[\w-]+'?: \{\n/gm)].length
+    const fileCount = [...src.matchAll(/^ {2}'?[\w-]+'?: \{(?:\/\/.*)?\n/gm)]
+      .length
     const count = Object.keys(PROVIDERS).length
     expect(count).toBe(fileCount)
     expect(count).toBeGreaterThanOrEqual(12)
