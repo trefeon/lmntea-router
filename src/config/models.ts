@@ -17,7 +17,7 @@ export interface ModelSpec {
 
 export const MODEL_REGISTRY: Record<string, ModelSpec> = {
   'anthropic/claude-fable-5': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'anthropic/claude-fable-5',
     provider: 'anthropic',
     contextWindow: 1000000,
@@ -39,7 +39,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'anthropic/claude-opus-4-5': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'anthropic/claude-opus-4-5',
     provider: 'anthropic',
     contextWindow: 200000,
@@ -53,7 +53,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'anthropic/claude-opus-4-5-20251101': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'anthropic/claude-opus-4-5-20251101',
     provider: 'anthropic',
     contextWindow: 200000,
@@ -67,7 +67,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'anthropic/claude-opus-4-6': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'anthropic/claude-opus-4-6',
     provider: 'anthropic',
     contextWindow: 1000000,
@@ -81,7 +81,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'anthropic/claude-opus-4-7': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'anthropic/claude-opus-4-7',
     provider: 'anthropic',
     contextWindow: 1000000,
@@ -103,7 +103,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'anthropic/claude-opus-4-8': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'anthropic/claude-opus-4-8',
     provider: 'anthropic',
     contextWindow: 1000000,
@@ -125,7 +125,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'anthropic/claude-opus-5': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'anthropic/claude-opus-5',
     provider: 'anthropic',
     contextWindow: 1000000,
@@ -147,7 +147,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'anthropic/claude-sonnet-4-5': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'anthropic/claude-sonnet-4-5',
     provider: 'anthropic',
     contextWindow: 200000,
@@ -160,7 +160,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'anthropic/claude-sonnet-4-6': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'anthropic/claude-sonnet-4-6',
     provider: 'anthropic',
     contextWindow: 1000000,
@@ -173,7 +173,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'anthropic/claude-sonnet-5': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'anthropic/claude-sonnet-5',
     provider: 'anthropic',
     contextWindow: 1000000,
@@ -209,7 +209,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'bedrock/anthropic.claude-haiku-4-5': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'bedrock/anthropic.claude-haiku-4-5',
     provider: 'bedrock',
     contextWindow: 128000,
@@ -219,7 +219,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: false,
   },
   'bedrock/anthropic.claude-opus-4-6': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'bedrock/anthropic.claude-opus-4-6',
     provider: 'bedrock',
     contextWindow: 128000,
@@ -229,7 +229,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: false,
   },
   'bedrock/anthropic.claude-opus-4-7': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'bedrock/anthropic.claude-opus-4-7',
     provider: 'bedrock',
     contextWindow: 128000,
@@ -239,7 +239,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: false,
   },
   'bedrock/anthropic.claude-sonnet-4-5': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'bedrock/anthropic.claude-sonnet-4-5',
     provider: 'bedrock',
     contextWindow: 128000,
@@ -249,7 +249,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: false,
   },
   'bedrock/openai.gpt-oss-120b-1:0': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'bedrock/openai.gpt-oss-120b-1:0',
     provider: 'bedrock',
     contextWindow: 128000,
@@ -259,7 +259,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: false,
   },
   'commandcode/deepseek/deepseek-v4-flash': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'commandcode/deepseek/deepseek-v4-flash',
     provider: 'commandcode',
     contextWindow: 262144,
@@ -269,7 +269,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: false,
   },
   'commandcode/gpt-5.6-luna': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'commandcode/gpt-5.6-luna',
     provider: 'commandcode',
     contextWindow: 128000,
@@ -279,7 +279,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: false,
   },
   'deepseek/deepseek-v4-flash': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'deepseek/deepseek-v4-flash',
     provider: 'deepseek',
     contextWindow: 1000000,
@@ -303,7 +303,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'gemini-3.7-flash-tiered': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'gemini-3.7-flash-tiered',
     provider: 'gemini',
     contextWindow: 1048576,
@@ -317,7 +317,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'gemini/gemini-2.5-flash': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'gemini/gemini-2.5-flash',
     provider: 'gemini',
     contextWindow: 1048576,
@@ -338,7 +338,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'gemini/gemini-3.6-flash-high': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'gemini/gemini-3.6-flash-high',
     provider: 'gemini',
     contextWindow: 1048576,
@@ -358,7 +358,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'gemini/gemini-3.6-flash-low': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'gemini/gemini-3.6-flash-low',
     provider: 'gemini',
     contextWindow: 1048576,
@@ -378,7 +378,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'gemini/gemini-3.6-flash-medium': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'gemini/gemini-3.6-flash-medium',
     provider: 'gemini',
     contextWindow: 1048576,
@@ -398,7 +398,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'gemini/gemini-3.7-flash': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'gemini/gemini-3.7-flash',
     provider: 'gemini',
     contextWindow: 1048576,
@@ -412,7 +412,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'gemini/gemini-3.7-flash-high': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'gemini/gemini-3.7-flash-high',
     provider: 'gemini',
     contextWindow: 1048576,
@@ -426,7 +426,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'gemini/gemini-3.7-flash-low': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'gemini/gemini-3.7-flash-low',
     provider: 'gemini',
     contextWindow: 1048576,
@@ -440,7 +440,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'gemini/gemini-3.7-flash-medium': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'gemini/gemini-3.7-flash-medium',
     provider: 'gemini',
     contextWindow: 1048576,
@@ -454,7 +454,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'gemini/gemini-3.7-flash-tiered': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'gemini/gemini-3.7-flash-tiered',
     provider: 'gemini',
     contextWindow: 1048576,
@@ -481,7 +481,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'kimi-k2.5-thinking': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'kimi-k2.5-thinking',
     provider: 'moonshot',
     contextWindow: 262144,
@@ -494,7 +494,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'kimi-k2.6-thinking': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'kimi-k2.6-thinking',
     provider: 'moonshot',
     contextWindow: 262144,
@@ -507,7 +507,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'kimi-k2.7': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'kimi-k2.7',
     provider: 'moonshot',
     contextWindow: 262144,
@@ -520,7 +520,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'kimi-k2.7-code-highspeed': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'kimi-k2.7-code-highspeed',
     provider: 'moonshot',
     contextWindow: 262144,
@@ -533,7 +533,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'kimi-k2.7-code-thinking': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'kimi-k2.7-code-thinking',
     provider: 'moonshot',
     contextWindow: 262144,
@@ -546,7 +546,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'MiniMax-M2.5': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'MiniMax-M2.5',
     provider: 'minimax',
     contextWindow: 200000,
@@ -558,7 +558,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'MiniMax-M2.7': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'MiniMax-M2.7',
     provider: 'minimax',
     contextWindow: 204800,
@@ -570,7 +570,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'MiniMax-M3': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'MiniMax-M3',
     provider: 'minimax',
     contextWindow: 1048576,
@@ -582,7 +582,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'minimax/minimax-m2.5': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'minimax/minimax-m2.5',
     provider: 'minimax',
     contextWindow: 200000,
@@ -594,7 +594,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'minimax/MiniMax-M2.5-highspeed': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'minimax/MiniMax-M2.5-highspeed',
     provider: 'minimax',
     contextWindow: 128000,
@@ -604,7 +604,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: false,
   },
   'minimax/minimax-m2.7': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'minimax/minimax-m2.7',
     provider: 'minimax',
     contextWindow: 204800,
@@ -616,7 +616,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'minimax/MiniMax-M2.7-highspeed': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'minimax/MiniMax-M2.7-highspeed',
     provider: 'minimax',
     contextWindow: 128000,
@@ -638,7 +638,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'moonshot/kimi-k2.5': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'moonshot/kimi-k2.5',
     provider: 'moonshot',
     contextWindow: 262144,
@@ -651,7 +651,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'moonshot/kimi-k2.6': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'moonshot/kimi-k2.6',
     provider: 'moonshot',
     contextWindow: 262144,
@@ -664,7 +664,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'moonshot/kimi-k2.7-code': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'moonshot/kimi-k2.7-code',
     provider: 'moonshot',
     contextWindow: 262144,
@@ -690,7 +690,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'openai/gpt-4o': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'openai/gpt-4o',
     provider: 'openai',
     contextWindow: 128000,
@@ -710,7 +710,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'openai/gpt-4o-mini': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'openai/gpt-4o-mini',
     provider: 'openai',
     contextWindow: 128000,
@@ -730,7 +730,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'openai/gpt-5.4': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'openai/gpt-5.4',
     provider: 'openai',
     contextWindow: 409600,
@@ -742,7 +742,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'openai/gpt-5.4-pro': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'openai/gpt-5.4-pro',
     provider: 'openai',
     contextWindow: 128000,
@@ -752,7 +752,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: false,
   },
   'openai/gpt-5.5': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'openai/gpt-5.5',
     provider: 'openai',
     contextWindow: 1050000,
@@ -764,7 +764,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'openai/gpt-5.5-pro': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'openai/gpt-5.5-pro',
     provider: 'openai',
     contextWindow: 128000,
@@ -787,7 +787,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'openai/gpt-5.6-luna': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'openai/gpt-5.6-luna',
     provider: 'openai',
     contextWindow: 1050000,
@@ -800,7 +800,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'openai/gpt-5.6-sol': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'openai/gpt-5.6-sol',
     provider: 'openai',
     contextWindow: 1050000,
@@ -813,7 +813,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'openai/gpt-5.6-terra': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'openai/gpt-5.6-terra',
     provider: 'openai',
     contextWindow: 1050000,
@@ -826,7 +826,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'opencode/big-pickle': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'opencode/big-pickle',
     provider: 'opencode',
     contextWindow: 1048576,
@@ -836,7 +836,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: false,
   },
   'opencode/hy3-free': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'opencode/hy3-free',
     provider: 'opencode',
     contextWindow: 262144,
@@ -846,7 +846,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: false,
   },
   'opencode/laguna-s-2.1-free': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'opencode/laguna-s-2.1-free',
     provider: 'opencode',
     contextWindow: 262144,
@@ -856,7 +856,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: false,
   },
   'opencode/mimo-v2.5-free': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'opencode/mimo-v2.5-free',
     provider: 'opencode',
     contextWindow: 262144,
@@ -866,7 +866,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: false,
   },
   'opencode/muse-spark-1.2-contributor-free': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'opencode/muse-spark-1.2-contributor-free',
     provider: 'opencode',
     contextWindow: 131072,
@@ -877,7 +877,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: false,
   },
   'opencode/x-preview-f-free': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'opencode/x-preview-f-free',
     provider: 'opencode',
     contextWindow: 1048576,
@@ -887,7 +887,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: false,
   },
   'xiaomi-mimo/mimo-v2-flash': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'xiaomi-mimo/mimo-v2-flash',
     provider: 'xiaomi-mimo',
     contextWindow: 262144,
@@ -897,7 +897,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: false,
   },
   'xiaomi-mimo/mimo-v2-omni': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'xiaomi-mimo/mimo-v2-omni',
     provider: 'xiaomi-mimo',
     contextWindow: 262144,
@@ -908,7 +908,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: false,
   },
   'xiaomi-mimo/mimo-v2-pro': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'xiaomi-mimo/mimo-v2-pro',
     provider: 'xiaomi-mimo',
     contextWindow: 262144,
@@ -919,7 +919,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: false,
   },
   'xiaomi-mimo/mimo-v2.5': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'xiaomi-mimo/mimo-v2.5',
     provider: 'xiaomi-mimo',
     contextWindow: 1048576,
@@ -930,7 +930,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: false,
   },
   'xiaomi-mimo/mimo-v2.5-pro': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'xiaomi-mimo/mimo-v2.5-pro',
     provider: 'xiaomi-mimo',
     contextWindow: 1048576,
@@ -953,7 +953,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'zai/glm-4.7-flash': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'zai/glm-4.7-flash',
     provider: 'zai',
     contextWindow: 128000,
@@ -963,7 +963,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: false,
   },
   'zai/glm-5': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'zai/glm-5',
     provider: 'zai',
     contextWindow: 200000,
@@ -975,7 +975,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'zai/glm-5-turbo': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'zai/glm-5-turbo',
     provider: 'zai',
     contextWindow: 128000,
@@ -985,7 +985,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: false,
   },
   'zai/glm-5.1': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'zai/glm-5.1',
     provider: 'zai',
     contextWindow: 200000,
@@ -997,7 +997,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'zai/glm-5.2': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'zai/glm-5.2',
     provider: 'zai',
     contextWindow: 1000000,
@@ -1009,7 +1009,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'zai/glm-5.2-high': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'zai/glm-5.2-high',
     provider: 'zai',
     contextWindow: 1000000,
@@ -1021,7 +1021,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'zai/glm-5.2-max': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'zai/glm-5.2-max',
     provider: 'zai',
     contextWindow: 1000000,
@@ -1033,7 +1033,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'zai/glm-5.3': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'zai/glm-5.3',
     provider: 'zai',
     contextWindow: 1000000,
@@ -1045,7 +1045,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'zai/glm-5.3-high': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'zai/glm-5.3-high',
     provider: 'zai',
     contextWindow: 1000000,
@@ -1057,7 +1057,7 @@ export const MODEL_REGISTRY: Record<string, ModelSpec> = {
     requiresThinkingReconciliation: true,
   },
   'zai/glm-5.3-low': {
-    // source: fixed missing maxOutputTokens
+    // source: reference/OmniRoute/src/shared/constants/modelSpecs.ts (verbatim cap, per_model_failure_analysis.md:23 clamp table)
     id: 'zai/glm-5.3-low',
     provider: 'zai',
     contextWindow: 1000000,

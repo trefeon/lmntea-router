@@ -8,6 +8,18 @@ export interface ProviderSpec {
 }
 
 export const PROVIDERS: Record<string, ProviderSpec> = {
+  opencode: {
+    // source: src/config/providers.ts c7795ec (original, research/per_model_failure_analysis.md:23)
+    baseUrl: 'https://opencode.ai/zen/v1',
+    apiKeyEnv: 'OPENCODE_API_KEY',
+    timeoutMs: 30_000,
+  },
+  commandcode: {
+    // source: src/config/providers.ts c7795ec (original, commandcode relay)
+    baseUrl: 'https://api.commandcode.ai/v1',
+    apiKeyEnv: 'COMMANDCODE_API_KEY',
+    timeoutMs: 30_000,
+  },
   anthropic: {
     // source: reference/OmniRoute/open-sse/config/providers/registry/anthropic/index.ts:5 | reference/OmniRoute/src/shared/constants/modelSpecs.ts:276
     baseUrl: 'https://api.anthropic.com/v1/messages',
