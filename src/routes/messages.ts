@@ -65,6 +65,7 @@ export function mountMessages(app: Hono<Env>) {
       return validationError(c, first.message, first.path.join('.'))
     }
     const data = parsed.data
+    c.set('usageModel', data.model)
     const spec = getModelSpec(data.model)
     let clampedHeader: string | undefined
     let strippedHeader: string | undefined

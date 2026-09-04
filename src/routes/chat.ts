@@ -65,6 +65,7 @@ export function mountChat(app: Hono<Env>) {
       return validationError(c, first.message, first.path.join('.'))
     }
     const data = parsed.data
+    c.set('usageModel', data.model)
     // P2 normalizer — exercised before streaming. Order: sanitize -> clamp -> thinking
     const spec = getModelSpec(data.model)
     let normalized: Record<string, unknown> | null = null

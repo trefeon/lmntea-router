@@ -7,9 +7,11 @@ import { authMiddleware } from './middleware/auth.js'
 import { bodyLimitMiddleware } from './middleware/bodyLimit.js'
 import { requireJson } from './middleware/contentType.js'
 import { getRequestId, requestId } from './middleware/requestId.js'
+import { usageMiddleware } from './middleware/usage.js'
 import { mountChat } from './routes/chat.js'
 import { mountMessages } from './routes/messages.js'
 import { mountModels } from './routes/models.js'
+import { mountUsage } from './routes/usage.js'
 import type { Env } from './types.js'
 
 const VERSION = '0.2.0'
@@ -39,11 +41,13 @@ export function createApp() {
     }),
   )
 
-  // Global middleware order: requestId -> contentTypeGuard (415) -> bodyLimit (413) -> auth (401, skip /health) -> routes
+  // Global middleware order: requestId -> contentTypeGuard (415) -> bodyLimit (413) -> auth (401, skip /health) -> usage route middleware -> routes
   app.use('*', requestId)
   app.use('*', requireJson)
   app.use('*', bodyLimitMiddleware())
   app.use('*', authMiddleware)
+  app.use('/v1/chat/completions', usageMiddleware)
+  app.use('/v1/messages', usageMiddleware)
   // liveness — no auth (authMiddleware skips /health), but requestId still applied
   app.get('/health', (c) =>
     c.json({ status: 'ok', uptime: process.uptime(), version: VERSION }),
@@ -66,6 +70,7 @@ export function createApp() {
   mountChat(app)
   mountMessages(app)
   mountModels(app)
+  mountUsage(app)
 
   // Serve frontend static (prod single-binary) — Hono serveStatic from apps/web/dist
   // In dev, vite handles it via proxy; in prod, node serves built assets
