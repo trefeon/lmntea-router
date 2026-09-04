@@ -55,7 +55,6 @@ function isOnboarded(): boolean {
     if (j && typeof j === "object" && "dismissed" in j) {
       return Boolean((j as Record<string, unknown>).dismissed);
     }
-    // if stored as JSON progress object with dismissed?
     return false;
   } catch {
     return v === "true";
@@ -66,10 +65,60 @@ function setOnboarded(dismissed: boolean) {
   localStorage.setItem(STORAGE_KEY, dismissed ? "true" : "false");
   // also dispatch event for other tabs/components
   try {
-    window.dispatchEvent(new StorageEvent("storage", { key: STORAGE_KEY, newValue: dismissed ? "true" : "false" }));
+    window.dispatchEvent(
+      new StorageEvent("storage", { key: STORAGE_KEY, newValue: dismissed ? "true" : "false" }),
+    );
   } catch {
     // ignore
   }
+}
+
+// ---------------------------------------------------------------------------
+// Step row (module scope — pure presentational)
+// ---------------------------------------------------------------------------
+
+const STEP_DONE_CIRCLE = "bg-live/15 border-live/30 text-live";
+const STEP_TODO_CIRCLE = "border-border bg-background text-muted-foreground";
+
+function Step({
+  index,
+  label,
+  done,
+  doneText,
+  todoText,
+  action,
+}: {
+  index: number;
+  label: string;
+  done: boolean;
+  doneText: string;
+  todoText: string;
+  action: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-md border border-border/60 bg-background px-3 py-2.5">
+      <span
+        className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs ${done ? STEP_DONE_CIRCLE : STEP_TODO_CIRCLE}`}
+      >
+        {done ? <Check className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
+      </span>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <span className="text-[13px] font-medium">
+          {index}. {label}
+        </span>
+        <span className="truncate text-xs text-muted-foreground">{done ? doneText : todoText}</span>
+      </div>
+      <div className="ml-auto flex shrink-0 items-center gap-2">
+        {done ? (
+          <Badge variant="outline" className="border-live/30 bg-live/10 text-live">
+            done
+          </Badge>
+        ) : (
+          action
+        )}
+      </div>
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -112,7 +161,6 @@ export function FirstRunReadinessCard({
       }
     };
     window.addEventListener("storage", onStorage);
-    // also poll for same-tab mutations via custom event?
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
@@ -165,14 +213,14 @@ export function FirstRunReadinessCard({
   if (dismissed) {
     if (compact) return null;
     return (
-      <Card className="border-zinc-800 bg-zinc-900">
+      <Card className="bg-card">
         <CardContent className="flex items-center justify-between py-3">
-          <span className="flex items-center gap-2 text-sm text-zinc-400">
-            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-500 border border-emerald-500/30">
+          <span className="flex items-center gap-2 text-[13px] text-muted-foreground">
+            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-live/30 bg-live/15 text-live">
               <Check className="h-3 w-3" />
             </span>
             Setup complete
-            <span className="text-zinc-500">· onboarding dismissed</span>
+            <span className="text-muted-foreground/60">· onboarding dismissed</span>
           </span>
           <Button
             variant="ghost"
@@ -190,11 +238,11 @@ export function FirstRunReadinessCard({
   }
 
   return (
-    <Card className="border-zinc-800 bg-zinc-900">
+    <Card className="bg-card">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-sm font-semibold tracking-tight">First-run readiness</CardTitle>
         <div className="flex items-center gap-2">
-          <Badge variant="outline" className="border-zinc-700 bg-zinc-950 text-zinc-400 font-mono text-xs">
+          <Badge variant="outline" className="font-mono text-xs text-muted-foreground">
             Setup {doneCount}/3
           </Badge>
           <Button variant="ghost" size="icon-sm" onClick={handleDismiss} aria-label="Dismiss onboarding">
@@ -203,120 +251,70 @@ export function FirstRunReadinessCard({
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-2">
-        {/* Step 1 */}
-        <div className="flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2.5">
-          <span
-            className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs ${
-              progress.providerDone
-                ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-500"
-                : "border-zinc-700 text-zinc-500 bg-zinc-900"
-            }`}
-          >
-            {progress.providerDone ? <Check className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
-          </span>
-          <div className="flex flex-col">
-            <span className="text-sm font-medium">1. Add provider</span>
-            <span className="text-xs text-zinc-500">
-              {progress.providerDone ? "API key configured · Connected" : "Connect OpenCode or compatible provider"}
-            </span>
-          </div>
-          <div className="ml-auto flex items-center gap-2">
-            {progress.providerDone ? (
-              <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-400">done</Badge>
-            ) : (
+        <Step
+          index={1}
+          label="Add provider"
+          done={progress.providerDone}
+          doneText="API key configured · Connected"
+          todoText="Connect OpenCode or compatible provider"
+          action={
+            <Link
+              to="/providers"
+              className="inline-flex h-8 items-center justify-center rounded-md bg-primary px-3 text-[13px] font-medium text-primary-foreground hover:bg-primary/90"
+            >
+              Add
+            </Link>
+          }
+        />
+        <Step
+          index={2}
+          label="Test health"
+          done={healthOk || progress.healthDone}
+          doneText="GET /health 200 · gateway reachable"
+          todoText={healthError ?? "Verify gateway is up on :8787"}
+          action={
+            <Button size="sm" variant="outline" onClick={handleTestHealth} disabled={healthLoading}>
+              {healthLoading ? "Checking…" : "Test"}
+            </Button>
+          }
+        />
+        {healthError && !healthOk ? (
+          <p className="px-1 text-xs text-destructive">{healthError}</p>
+        ) : null}
+        <Step
+          index={3}
+          label="Create combo"
+          done={progress.comboDone}
+          doneText="Combo created · fallback ready"
+          todoText="Aether fallback with 8 models"
+          action={
+            <>
               <Link
-                to="/providers"
-                className="inline-flex h-8 items-center justify-center rounded-lg bg-white px-3 text-sm font-medium text-black hover:bg-zinc-200"
+                to="/combos"
+                className="inline-flex h-8 items-center justify-center rounded-md bg-primary px-3 text-[13px] font-medium text-primary-foreground hover:bg-primary/90"
               >
-                Add
+                Create
               </Link>
-            )}
-          </div>
-        </div>
-
-        {/* Step 2 */}
-        <div className="flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2.5">
-          <span
-            className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs ${
-              healthOk || progress.healthDone
-                ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-500"
-                : "border-zinc-700 text-zinc-500 bg-zinc-900"
-            }`}
-          >
-            {healthOk || progress.healthDone ? <Check className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
-          </span>
-          <div className="flex flex-col flex-1 min-w-0">
-            <span className="text-sm font-medium">2. Test health</span>
-            <span className="text-xs text-zinc-500 truncate">
-              {healthOk || progress.healthDone ? "GET /health 200 · gateway reachable" : healthError ?? "Verify gateway is up on :8787"}
-            </span>
-          </div>
-          <div className="ml-auto flex items-center gap-2">
-            {healthOk || progress.healthDone ? (
-              <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-400">done</Badge>
-            ) : (
-              <Button size="sm" variant="outline" onClick={handleTestHealth} disabled={healthLoading} className="border-zinc-700 bg-zinc-900 hover:bg-zinc-800">
-                {healthLoading ? "Checking…" : "Test"}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="hidden sm:inline-flex"
+                onClick={() => setProgress((p) => ({ ...p, comboDone: true }))}
+              >
+                Mark done
               </Button>
-            )}
-          </div>
-        </div>
-        {healthError && !healthOk && (
-          <p className="px-1 text-xs text-red-400">{healthError}</p>
-        )}
-
-        {/* Step 3 */}
-        <div className="flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2.5">
-          <span
-            className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs ${
-              progress.comboDone
-                ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-500"
-                : "border-zinc-700 text-zinc-500 bg-zinc-900"
-            }`}
-          >
-            {progress.comboDone ? <Check className="h-3.5 w-3.5" /> : <Circle className="h-3.5 w-3.5" />}
-          </span>
-          <div className="flex flex-col">
-            <span className="text-sm font-medium">3. Create combo</span>
-            <span className="text-xs text-zinc-500">
-              {progress.comboDone ? "Combo created · fallback ready" : "Aether fallback with 8 models"}
-            </span>
-          </div>
-          <div className="ml-auto flex items-center gap-2">
-            {progress.comboDone ? (
-              <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-400">done</Badge>
-            ) : (
-              <>
-                <Link
-                  to="/combos"
-                  className="inline-flex h-8 items-center justify-center rounded-lg bg-white px-3 text-sm font-medium text-black hover:bg-zinc-200"
-                >
-                  Create
-                </Link>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="hidden sm:inline-flex border-zinc-700 bg-zinc-900 hover:bg-zinc-800"
-                  onClick={() => setProgress((p) => ({ ...p, comboDone: true }))}
-                >
-                  Mark done
-                </Button>
-              </>
-            )}
-          </div>
-        </div>
+            </>
+          }
+        />
 
         {/* Dismiss / progress */}
         <div className="flex items-center justify-between pt-1">
-          <span className="text-xs text-zinc-500">
-            {allDone ? "All steps done — dismiss to show dashboard stats." : `${3 - doneCount} step${3 - doneCount === 1 ? "" : "s"} remaining`}
+          <span className="text-xs text-muted-foreground/60">
+            {allDone
+              ? "All steps done — dismiss to show overview stats."
+              : `${3 - doneCount} step${3 - doneCount === 1 ? "" : "s"} remaining`}
           </span>
-          <Button
-            size="sm"
-            variant={allDone ? "default" : "outline"}
-            onClick={handleDismiss}
-            className={allDone ? "bg-white text-black hover:bg-zinc-200" : "border-zinc-700 bg-zinc-900 hover:bg-zinc-800"}
-          >
+          <Button size="sm" variant={allDone ? "default" : "outline"} onClick={handleDismiss}>
             Dismiss
           </Button>
         </div>
@@ -333,7 +331,9 @@ export function markProviderDone() {
   const p = loadProgress();
   p.providerDone = true;
   saveProgress(p);
-  try { window.dispatchEvent(new StorageEvent("storage", { key: PROGRESS_KEY })); } catch {}
+  try {
+    window.dispatchEvent(new StorageEvent("storage", { key: PROGRESS_KEY }));
+  } catch {}
 }
 
 export function markComboDone() {
@@ -341,7 +341,9 @@ export function markComboDone() {
   p.comboDone = true;
   saveProgress(p);
   localStorage.setItem("lmntea-combo-created", "true");
-  try { window.dispatchEvent(new StorageEvent("storage", { key: PROGRESS_KEY })); } catch {}
+  try {
+    window.dispatchEvent(new StorageEvent("storage", { key: PROGRESS_KEY }));
+  } catch {}
 }
 
 export function resetOnboarding() {

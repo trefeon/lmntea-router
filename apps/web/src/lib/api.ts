@@ -333,13 +333,14 @@ export async function fetchHealth(signal?: AbortSignal): Promise<Health> {
   // /health is no-auth
   try {
     return await fetchJson<Health>("/health", { signal, timeoutMs: 8000, noAuth: true });
-  } catch {
+  } catch (err) {
     // fallback base retry (8787 -> 3000)
     if (getApiBase() === API_BASE.replace(/\/$/, "")) {
       try {
         return await fetchJson<Health>("/health", { signal, timeoutMs: 8000, noAuth: true, apiBase: FALLBACK_BASE });
       } catch {}
     }
+    if (isAbortError(err)) throw err;
     throw new ApiError("Health check failed", 0, undefined, { kind: "network", status: 0, title: "Network error", description: "Gateway unreachable", retryable: true } as ClassifiedError);
   }
 }
@@ -412,6 +413,11 @@ export async function fetchModels(signal?: AbortSignal): Promise<{ data: ModelEn
     // enrich: map context_length etc to aliases if missing
     const enriched = (arr as ModelEntry[]).map((m) => ({
       ...m,
+      // backend /v1/models returns OpenAI shape (owned_by) — normalize to provider
+      provider:
+        m.provider ??
+        (m as Model & { owned_by?: string }).owned_by ??
+        (String(m.id).includes("/") ? String(m.id).split("/")[0] : undefined),
       context_length: (m.context_length as number | undefined) ?? (m.contextLength as number | undefined) ?? 128000,
       contextLength: (m.contextLength as number | undefined) ?? (m.context_length as number | undefined),
       max_output: (m.max_output as number | undefined) ?? (m.maxCompletionTokens as number | undefined),
@@ -443,57 +449,37 @@ export async function fetchModels(signal?: AbortSignal): Promise<{ data: ModelEn
 export const getModels = fetchModels;
 
 // ---------------------------------------------------------------------------
-// Usage (with mock fallback)
+// Usage
 // ---------------------------------------------------------------------------
 
-export type UsagePoint = { t: string; requests: number; tokens: number };
+export type UsagePoint = { t: string; requests: number; tokens: number | null };
 export type UsageSummary = {
   requests: number;
   errors: number;
-  tokensIn: number;
-  tokensOut: number;
-  cost: number;
-  avgTtftMs: number;
-  p95Ms: number;
-  cacheHit: number;
+  tokensIn: number | null;
+  tokensOut: number | null;
+  cost: number | null;
+  avgLatencyMs: number | null;
+  avgTtftMs: number | null;
+  p95Ms: number | null;
+  cacheHit: number | null;
   points: UsagePoint[];
-  byModel: { model: string; req: number; tokens: number; share: number; ttftMs: number | null; cost: number }[];
+  byModel: {
+    model: string;
+    req: number;
+    tokens: number | null;
+    share: number;
+    ttftMs: number | null;
+    cost: number | null;
+  }[];
 };
 
-const MOCK_USAGE: UsageSummary = {
-  requests: 14901,
-  errors: 472,
-  tokensIn: 1900000,
-  tokensOut: 600000,
-  cost: 0,
-  avgTtftMs: 2100,
-  p95Ms: 5700,
-  cacheHit: 0.64,
-  points: [
-    { t: "00:00", requests: 42, tokens: 8200 },
-    { t: "06:00", requests: 88, tokens: 15400 },
-    { t: "12:00", requests: 143, tokens: 28100 },
-    { t: "18:00", requests: 112, tokens: 21400 },
-    { t: "now", requests: 98, tokens: 18200 },
-  ],
-  byModel: [
-    { model: "oc/muse-spark-1.2-free", req: 5421, tokens: 892000, share: 36, ttftMs: 1900, cost: 0 },
-    { model: "oc/x-preview-f-free", req: 3880, tokens: 714000, share: 26, ttftMs: 2400, cost: 0 },
-    { model: "oc/mimo-v2.5-free", req: 2104, tokens: 418000, share: 14, ttftMs: 1700, cost: 0 },
-    { model: "oc/laguna-s-2.1-free", req: 1802, tokens: 301000, share: 12, ttftMs: 3100, cost: 0 },
-    { model: "deepseek/deepseek-v3.2", req: 412, tokens: 98000, share: 3, ttftMs: 1400, cost: 0.31 },
-    { model: "others (9 models)", req: 1282, tokens: 177000, share: 9, ttftMs: null, cost: 0.04 },
-  ],
-};
-
-export async function fetchUsage(period: string, signal?: AbortSignal): Promise<{ data: UsageSummary; fromMock: boolean }> {
-  try {
-    const res = await fetchJson<UsageSummary>(`/v1/usage?period=${period}`, { signal });
-    if (!res || typeof res.requests !== "number") throw new Error("invalid");
-    return { data: res, fromMock: false };
-  } catch {
-    return { data: MOCK_USAGE, fromMock: true };
+export async function fetchUsage(period: "24h" | "7d" | "30d", signal?: AbortSignal): Promise<UsageSummary> {
+  const result = await fetchJson<UsageSummary>(`/v1/usage?period=${period}`, { signal });
+  if (!result || typeof result.requests !== "number" || !Array.isArray(result.points) || !Array.isArray(result.byModel)) {
+    throw new Error("Invalid usage response");
   }
+  return result;
 }
 
 // ---------------------------------------------------------------------------

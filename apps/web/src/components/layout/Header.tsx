@@ -1,78 +1,112 @@
-import { Menu, Copy, Eye, EyeOff } from "lucide-react"
-import { useState } from "react"
+import { Copy } from "lucide-react"
+import { useEffect, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { useIsMobile } from "@/hooks/use-mobile"
+import { fetchHealth, getApiBase } from "@/lib/api"
+import { cn } from "@/lib/utils"
 
-export function Header({
-  onMenuClick,
-}: {
-  onMenuClick: () => void
-}) {
+function useHealth() {
+  const [state, setState] = useState<{
+    status: "ok" | "down" | "loading"
+    latencyMs?: number
+    version?: string
+  }>({ status: "loading" })
+
+  useEffect(() => {
+    let alive = true
+    const ping = async () => {
+      try {
+        const h = await fetchHealth()
+        if (!alive) return
+        setState({ status: h.status === "ok" ? "ok" : "down", latencyMs: h.latencyMs, version: h.version })
+      } catch {
+        if (alive) setState({ status: "down" })
+      }
+    }
+    ping()
+    const t = setInterval(ping, 15_000)
+    return () => {
+      alive = false
+      clearInterval(t)
+    }
+  }, [])
+
+  return state
+}
+
+function StatusDot({ status }: { status: "ok" | "down" | "loading" }) {
+  return (
+    <span
+      className={cn(
+        "inline-block size-1.5 rounded-full",
+        status === "ok" && "bg-live",
+        status === "down" && "bg-destructive",
+        status === "loading" && "bg-muted-foreground/50"
+      )}
+      aria-hidden
+    />
+  )
+}
+
+export function Header({ onMenuClick }: { onMenuClick: () => void }) {
   const isMobile = useIsMobile()
-  const [revealed, setRevealed] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const health = useHealth()
+
+  const base = getApiBase() || (typeof window !== "undefined" ? window.location.origin : "")
+  const endpoint = `${base}/v1`
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(endpoint)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      /* clipboard unavailable — noop */
+    }
+  }
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 w-full items-center justify-between border-b bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/80 px-3 md:px-4">
-      {/* left: brand + health */}
-      <div className="flex items-center gap-3 min-w-0">
+    <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b bg-background/90 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:px-5">
+      <div className="flex min-w-0 items-center gap-3">
         {isMobile ? (
           <Button variant="ghost" size="icon" aria-label="Open sidebar" onClick={onMenuClick} className="shrink-0">
-            <Menu className="size-4" />
+            <MenuGlyph />
           </Button>
         ) : null}
 
-        <div className="flex items-center gap-2.5 font-semibold tracking-tight">
-          <span className="inline-flex size-7 items-center justify-center rounded-lg bg-foreground text-background text-sm font-black shrink-0">
-            ◐
-          </span>
-          <span className="hidden sm:inline">lmntea-router</span>
-          <span className="hidden sm:inline-flex rounded-full border bg-muted px-2 py-0.5 font-mono text-[10px] leading-none text-muted-foreground">
-            v0.1.0 · Hono
-          </span>
-          <span className="hidden md:inline-flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
-            <span className="size-2 rounded-full bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.15)]" />
-            HEALTHY
-          </span>
-        </div>
-
-        <div className="hidden lg:flex items-center gap-2">
-          <select
-            aria-label="model"
-            defaultValue="oc/x-preview-f-free"
-            className="h-8 rounded-lg border bg-card px-2.5 text-sm text-foreground"
-          >
-            <option>oc/x-preview-f-free</option>
-            <option>oc/muse-spark-1.2-contributor-free</option>
-            <option>openrouter/auto</option>
-          </select>
+        <div className="flex items-baseline gap-2">
+          <span className="text-[15px] font-semibold tracking-tight">lmntea</span>
+          <span className="font-mono text-xs text-muted-foreground">router</span>
         </div>
       </div>
 
-      {/* right: base url + api key */}
-      <div className="flex items-center gap-2 shrink-0">
-        <Button
-          variant="outline"
-          size="sm"
-          className="hidden sm:inline-flex gap-1.5 bg-card"
-          onClick={() => navigator.clipboard.writeText("http://localhost:8787/v1")}
-        >
+      <div className="flex shrink-0 items-center gap-2">
+        <Button variant="outline" size="sm" className="gap-1.5 bg-card font-mono text-xs" onClick={copy}>
           <Copy className="size-3.5" />
-          <span className="hidden lg:inline">Copy Base URL</span>
-          <span className="lg:hidden">Copy URL</span>
+          {copied ? "copied" : "/v1"}
         </Button>
 
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-1.5 bg-card font-mono text-xs"
-          onClick={() => setRevealed((v) => !v)}
+        <div
+          className="hidden items-center gap-2 font-mono text-xs text-muted-foreground sm:flex"
+          title={health.status === "down" ? "API unreachable" : `latency ${health.latencyMs ?? "—"} ms`}
         >
-          {revealed ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
-          {revealed ? "sk-••••••••" : "••••••••"}
-          <span className="hidden sm:inline">{revealed ? "Hide" : "Reveal"}</span>
-        </Button>
+          <StatusDot status={health.status} />
+          <span>
+            {health.status === "loading" ? "—" : health.status === "ok" ? (health.latencyMs != null ? `${health.latencyMs}ms` : "ok") : "down"}
+          </span>
+          {health.version ? <span className="text-muted-foreground/60">v{health.version}</span> : null}
+        </div>
       </div>
     </header>
+  )
+}
+
+function MenuGlyph() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
   )
 }

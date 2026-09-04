@@ -3,44 +3,43 @@ import { Download, TrendingUp, Coins, Clock, Activity, AlertTriangle, RefreshCw 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/PageHeader";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
-import { fetchUsage, type UsageSummary, ApiError } from "@/lib/api";
+import { fetchUsage, type UsageSummary, type UsagePoint, ApiError } from "@/lib/api";
 
-function Sparkline({ points }: { points: { t: string; requests: number; tokens: number }[] }) {
-  // normalize to SVG 0..760 x 0..120
-  const maxR = Math.max(...points.map((p)=>p.requests), 1);
-  const maxT = Math.max(...points.map((p)=>p.tokens), 1);
-  const w = 760, h = 120;
+const unknown = "—";
+
+function Sparkline({ points }: { points: UsagePoint[] }) {
+  const maxR = Math.max(...points.map((p) => p.requests), 1);
+  const knownTokens = points.filter((p) => p.tokens !== null);
+  const maxT = Math.max(...knownTokens.map((p) => p.tokens ?? 0), 1);
+  const w = 760;
+  const h = 120;
   const pad = 36;
   const plotW = w - pad;
-  const toX = (i: number) => pad + (i / Math.max(1, points.length-1)) * plotW;
-  const toYReq = (v: number) => h - (v/maxR)* (h*0.7) - 10;
-  const toYTok = (v: number) => h - (v/maxT)* (h*0.6) - 14;
-  const reqD = points.map((p,i)=> `${i===0?"M":"L"}${toX(i)},${toYReq(p.requests)}`).join(" ");
-  const tokD = points.map((p,i)=> `${i===0?"M":"L"}${toX(i)},${toYTok(p.tokens)}`).join(" ");
-  const reqArea = `${reqD} L${toX(points.length-1)},${h-10} L${toX(0)},${h-10} Z`;
-  const tokArea = `${tokD} L${toX(points.length-1)},${h-10} L${toX(0)},${h-10} Z`;
+  const toX = (i: number) => pad + (i / Math.max(1, points.length - 1)) * plotW;
+  const toYReq = (v: number) => h - (v / maxR) * (h * 0.7) - 10;
+  const toYTok = (v: number) => h - (v / maxT) * (h * 0.6) - 14;
+  const reqD = points.map((p, i) => `${i === 0 ? "M" : "L"}${toX(i)},${toYReq(p.requests)}`).join(" ");
+  const tokD = points.reduce((path, p, i) => p.tokens === null ? path : `${path}${path ? " L" : "M"}${toX(i)},${toYTok(p.tokens)}`, "");
+  const reqArea = `${reqD} L${toX(points.length - 1)},${h - 10} L${toX(0)},${h - 10} Z`;
   return (
-    <svg viewBox={`0 0 ${w} ${h+40}`} width="100%" height="160" role="img" aria-label="Usage area chart" className="block">
+    <svg viewBox={`0 0 ${w} ${h + 40}`} width="100%" height="160" role="img" aria-label="Usage area chart" className="block">
       <defs>
-        <linearGradient id="ug1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#ffffff" stopOpacity=".28"/><stop offset="100%" stopColor="#ffffff" stopOpacity="0"/></linearGradient>
-        <linearGradient id="ug2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#22c55e" stopOpacity=".22"/><stop offset="100%" stopColor="#22c55e" stopOpacity="0"/></linearGradient>
+        <linearGradient id="ug1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--foreground)" stopOpacity=".16" /><stop offset="100%" stopColor="var(--foreground)" stopOpacity="0" /></linearGradient>
+        <linearGradient id="ug2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--chart-1)" stopOpacity=".18" /><stop offset="100%" stopColor="var(--chart-1)" stopOpacity="0" /></linearGradient>
       </defs>
-      <rect x={pad} y="10" width={plotW} height={h-20} rx="10" fill="#09090b" stroke="#27272a" strokeDasharray="5 5" />
-      <text x={w/2} y="18" textAnchor="middle" fill="#3f3f46" fontSize="10" fontFamily="ui-monospace,monospace" letterSpacing=".08em">CHART — SVG sparkline</text>
-      <g stroke="#1f1f23" strokeWidth="1">
-        <line x1={pad} y1="40" x2={w} y2="40"/><line x1={pad} y1="70" x2={w} y2="70"/><line x1={pad} y1="100" x2={w} y2="100"/>
-      </g>
-      <path d={tokArea} fill="url(#ug2)" />
-      <path d={tokD} fill="none" stroke="#22c55e" strokeWidth="1.7" strokeLinejoin="round" />
+      <rect x={pad} y="10" width={plotW} height={h - 20} rx="6" fill="var(--background)" stroke="var(--input)" strokeDasharray="4 4" />
+      <g stroke="var(--border)" strokeWidth="1"><line x1={pad} y1="40" x2={w} y2="40" /><line x1={pad} y1="70" x2={w} y2="70" /><line x1={pad} y1="100" x2={w} y2="100" /></g>
+      {tokD ? <path d={tokD} fill="none" stroke="var(--chart-1)" strokeWidth="1.7" strokeLinejoin="round" /> : null}
       <path d={reqArea} fill="url(#ug1)" />
-      <path d={reqD} fill="none" stroke="#ffffff" strokeWidth="1.8" strokeLinejoin="round" />
-      <g fill="#71717a" fontSize="10" fontFamily="ui-monospace,monospace">
-        {points.map((p,i)=> {
-          if (i % Math.ceil(points.length/5) !==0 && i !== points.length-1) return null;
-          return <text key={p.t+i} x={toX(i)} y={h+14} textAnchor="middle">{p.t}</text>;
+      <path d={reqD} fill="none" stroke="var(--foreground)" strokeWidth="1.8" strokeLinejoin="round" />
+      <g fill="var(--muted-foreground)" fontSize="10" fontFamily="ui-monospace,monospace">
+        {points.map((p, i) => {
+          if (i % Math.ceil(points.length / 5) !== 0 && i !== points.length - 1) return null;
+          return <text key={`${p.t}${i}`} x={toX(i)} y={h + 14} textAnchor="middle">{p.t}</text>;
         })}
       </g>
     </svg>
@@ -48,180 +47,75 @@ function Sparkline({ points }: { points: { t: string; requests: number; tokens: 
 }
 
 export default function Usage() {
-  const [period, setPeriod] = useState<"24h"|"7d"|"30d">("24h");
+  const [period, setPeriod] = useState<"24h" | "7d" | "30d">("24h");
   const [data, setData] = useState<UsageSummary | null>(null);
-  const [fromMock, setFromMock] = useState(false);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
     const ac = new AbortController();
+    let cancelled = false;
     setLoading(true);
     setErr(null);
     fetchUsage(period, ac.signal)
-      .then((r)=> { setData(r.data); setFromMock(r.fromMock); })
-      .catch((e)=>{
-        const msg = e instanceof ApiError ? `${e.status} ${e.message}` : e instanceof Error ? e.message : "failed";
-        setErr(msg);
+      .then((d) => {
+        if (!cancelled) setData(d);
       })
-      .finally(()=> setLoading(false));
-    return () => ac.abort();
+      .catch((e) => {
+        if (!cancelled) setErr(e instanceof ApiError ? `${e.status} ${e.message}` : e instanceof Error ? e.message : "Failed to load usage");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+      ac.abort();
+    };
   }, [period]);
 
   function exportCsv() {
     if (!data) return;
-    const rows = data.byModel.map((m)=> `${m.model},${m.req},${m.tokens},${m.share},${m.ttftMs??""},${m.cost}`).join("\n");
-    const csv = `model,req,tokens,share,ttftMs,cost\n${rows}`;
-    const blob = new Blob([csv], { type: "text/csv" });
+    const rows = data.byModel.map((m) => [m.model, m.req, m.tokens ?? "", m.share, m.ttftMs ?? "", m.cost ?? ""].join(",")).join("\n");
+    const blob = new Blob([`model,req,tokens,share,ttftMs,cost\n${rows}`], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href=url; a.download=`usage-${period}.csv`; a.click(); URL.revokeObjectURL(url);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `usage-${period}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
-  if (loading) {
-    return <div className="space-y-3"><Skeleton className="h-10 w-full bg-zinc-900" /><div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{Array.from({length:4}).map((_,i)=><Skeleton key={i} className="h-[110px] bg-zinc-900" />)}</div><Skeleton className="h-[220px] w-full bg-zinc-900" /></div>;
-  }
-
-  if (err && !data) {
-    return (
-      <div className="space-y-3">
-        <Empty className="border border-red-500/30 bg-red-500/10">
-          <EmptyHeader><EmptyMedia variant="icon"><AlertTriangle className="h-4 w-4 text-red-300" /></EmptyMedia><EmptyTitle className="text-red-100">Failed to load usage</EmptyTitle><EmptyDescription className="text-red-300">{err} — {err.includes("401") ? "check Bearer token" : err.includes("429") ? "rate limited" : err.includes("413") ? "payload too large" : "server error, showing mock fallback on retry"}</EmptyDescription></EmptyHeader>
-          <Button variant="outline" className="border-red-500/30 bg-red-500/10 text-red-100" onClick={()=> location.reload()}><RefreshCw className="h-4 w-4" /> Retry</Button>
-        </Empty>
-      </div>
-    );
-  }
-
+  if (loading) return <div className="space-y-4"><Skeleton className="h-10 w-full" /><div className="grid grid-cols-2 gap-4 lg:grid-cols-4">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[110px]" />)}</div><Skeleton className="h-[220px] w-full" /></div>;
+  if (err && !data) return <Empty className="border border-destructive/30 bg-destructive/10"><EmptyHeader><EmptyMedia variant="icon" className="bg-destructive/15 text-destructive"><AlertTriangle className="h-4 w-4" /></EmptyMedia><EmptyTitle className="text-destructive">Failed to load usage</EmptyTitle><EmptyDescription>{err}</EmptyDescription></EmptyHeader><Button variant="outline" onClick={() => window.location.reload()}><RefreshCw className="h-4 w-4" /> Retry</Button></Empty>;
   if (!data) return null;
 
-  const errorRate = ((data.errors / Math.max(1,data.requests))*100).toFixed(1);
-  const totalTokens = (data.tokensIn + data.tokensOut);
+  const errorRate = data.requests ? ((data.errors / data.requests) * 100).toFixed(1) : "0.0";
+  const successRate = (100 - Number(errorRate)).toFixed(1);
+  const totalTokens = data.tokensIn !== null && data.tokensOut !== null ? data.tokensIn + data.tokensOut : null;
+  const windowMinutes = period === "7d" ? 10080 : period === "30d" ? 43200 : 1440;
+  const perMin = (data.requests / windowMinutes).toFixed(1);
+  const hasPoints = data.points.length > 0;
+  const hasTokenPoints = data.points.some((p) => p.tokens !== null);
+  const peakReq = hasPoints ? data.points.reduce((m, p) => p.requests > m.requests ? p : m, data.points[0]) : null;
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight">Usage / Analytics</h1>
-          <p className="font-mono text-xs text-zinc-500">Requests · Tokens IN/OUT · Cost USD · TTFT · breakdown by model {fromMock ? "· mock fallback" : ""}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="inline-flex rounded-full border border-zinc-800 bg-zinc-900 p-1">
-            {(["24h","7d","30d"] as const).map((p)=> (
-              <button key={p} onClick={()=>setPeriod(p)} className={`rounded-full px-3 py-1 font-mono text-xs ${period===p ? "bg-white text-zinc-900" : "text-zinc-400 hover:text-white"}`}>{p}</button>
-            ))}
-          </div>
-          <Button variant="outline" className="border-zinc-800 bg-zinc-900" onClick={exportCsv}><Download className="h-4 w-4" /> CSV Export</Button>
-        </div>
+    <div className="space-y-6">
+      <PageHeader title="Usage" description="Request metrics and gateway latency">
+        <div className="inline-flex items-center gap-0.5 rounded-md border border-border bg-card p-0.5">{(["24h", "7d", "30d"] as const).map((p) => <button key={p} type="button" onClick={() => setPeriod(p)} className={`rounded-sm px-2.5 py-1 font-mono text-xs tabular-nums transition-colors duration-150 ${period === p ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"}`}>{p}</button>)}</div>
+        <Button variant="outline" onClick={exportCsv}><Download className="h-4 w-4" /> CSV Export</Button>
+      </PageHeader>
+      {err ? <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 font-mono text-xs text-warning"><AlertTriangle className="size-4 shrink-0" /> {err}</div> : null}
+
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <Card><CardHeader className="pb-2"><CardTitle className="flex items-center gap-1.5 font-mono text-[11px] uppercase text-muted-foreground"><Activity className="size-3.5" /> Requests</CardTitle></CardHeader><CardContent><div className="font-mono text-3xl font-semibold tabular-nums">{data.requests.toLocaleString()}</div><p className="mt-1.5 font-mono text-[11px] tabular-nums text-muted-foreground">{successRate}% success · {perMin}/min avg</p></CardContent></Card>
+        <Card><CardHeader className="pb-2"><CardTitle className="flex items-center gap-1.5 font-mono text-[11px] uppercase text-muted-foreground"><TrendingUp className="size-3.5" /> Tokens IN / OUT</CardTitle></CardHeader><CardContent><div className="flex items-baseline gap-1.5 font-mono text-3xl font-semibold tabular-nums">{data.tokensIn === null ? unknown : `${(data.tokensIn / 1_000_000).toFixed(1)}M`}<span className="text-sm text-muted-foreground">/ {data.tokensOut === null ? unknown : `${(data.tokensOut / 1_000_000).toFixed(1)}M`} out</span></div><p className="mt-1.5 font-mono text-[11px] tabular-nums text-muted-foreground">{totalTokens === null ? unknown : `${(totalTokens / 1_000_000).toFixed(1)}M total`} · {data.cacheHit === null ? unknown : `${Math.round(data.cacheHit * 100)}% cached`}</p></CardContent></Card>
+        <Card><CardHeader className="pb-2"><CardTitle className="flex items-center gap-1.5 font-mono text-[11px] uppercase text-muted-foreground"><Coins className="size-3.5" /> Cost</CardTitle></CardHeader><CardContent><div className="font-mono text-3xl font-semibold tabular-nums">{data.cost === null ? unknown : `$${data.cost.toFixed(2)}`}</div><p className="mt-1.5 font-mono text-[11px] text-muted-foreground">{data.byModel.length} models observed</p></CardContent></Card>
+        <Card><CardHeader className="pb-2"><CardTitle className="flex items-center gap-1.5 font-mono text-[11px] uppercase text-muted-foreground"><Clock className="size-3.5" /> Gateway latency</CardTitle></CardHeader><CardContent><div className="flex items-baseline gap-1.5 font-mono text-3xl font-semibold tabular-nums">{data.avgLatencyMs === null ? unknown : `${(data.avgLatencyMs / 1000).toFixed(1)}s`}</div><p className="mt-1.5 font-mono text-[11px] tabular-nums text-muted-foreground">p95 {data.p95Ms === null ? unknown : `${(data.p95Ms / 1000).toFixed(1)}s`}</p></CardContent></Card>
       </div>
 
-      {err ? <div className="flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 font-mono text-xs text-amber-200"><AlertTriangle className="h-4 w-4" /> {err}</div> : null}
+      <Card className="overflow-hidden p-0"><div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3"><div><h3 className="font-mono text-xs uppercase text-muted-foreground">Requests{hasTokenPoints ? " & tokens" : ""} · {period}</h3><p className="mt-0.5 font-mono text-[11px] text-muted-foreground">{hasPoints ? `${data.points.length} samples` : "No records"}</p></div><div className="flex gap-2"><Badge variant="outline" className="gap-1.5"><span className="size-2 rounded-full bg-foreground" /> requests</Badge>{hasTokenPoints ? <Badge variant="outline" className="gap-1.5"><span className="size-2 rounded-full bg-chart-1" /> tokens</Badge> : null}</div></div>{hasPoints ? <div className="px-4 pt-4"><Sparkline points={data.points} /><div className="-mx-4 mt-4 border-t border-border px-4 py-2 font-mono text-[11px] text-muted-foreground">peak {peakReq?.requests.toLocaleString()} requests @ {peakReq?.t}</div></div> : <Empty className="border-0 bg-background py-10"><EmptyHeader><EmptyMedia variant="icon"><TrendingUp className="h-4 w-4" /></EmptyMedia><EmptyTitle>No usage yet</EmptyTitle><EmptyDescription>Usage data will appear after the first request.</EmptyDescription></EmptyHeader></Empty>}</Card>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Card className="border-zinc-800 bg-zinc-900">
-          <CardHeader className="pb-2"><CardTitle className="flex items-center gap-1.5 font-mono text-xs uppercase tracking-widest text-zinc-500"><Activity className="h-3.5 w-3.5" /> Requests</CardTitle></CardHeader>
-          <CardContent>
-            <div className="text-xl font-bold tracking-tight">{data.requests.toLocaleString()} <span className="text-xs font-normal text-zinc-500">· {data.errors} err {errorRate}%</span></div>
-            <div className="mt-1 font-mono text-[11px] text-zinc-400">96.8% success · 14.3 req/min avg</div>
-            <div className="mt-2 flex gap-2"><Badge className="border-emerald-500/30 bg-emerald-500/10 text-emerald-300">▲ 12% vs 7d</Badge><Badge variant="outline" className="border-zinc-800 bg-zinc-950 font-mono text-xs">p95 { (data.p95Ms/1000).toFixed(1)}s</Badge></div>
-          </CardContent>
-        </Card>
-        <Card className="border-zinc-800 bg-zinc-900">
-          <CardHeader className="pb-2"><CardTitle className="flex items-center gap-1.5 font-mono text-xs uppercase tracking-widest text-zinc-500"><TrendingUp className="h-3.5 w-3.5" /> Tokens IN / OUT</CardTitle></CardHeader>
-          <CardContent>
-            <div className="text-xl font-bold tracking-tight">{(data.tokensIn/1_000_000).toFixed(1)}M <span className="text-xs font-normal text-zinc-500">/ {(data.tokensOut/1_000_000).toFixed(1)}M</span></div>
-            <div className="mt-1 font-mono text-[11px] text-zinc-400">{(totalTokens/1_000_000).toFixed(1)}M total · {Math.round(data.cacheHit*100)}% cached ↻ · 18k avg ctx</div>
-            <div className="mt-2 flex items-center gap-2"><span className="h-1.5 w-20 overflow-hidden rounded-full bg-zinc-800"><i className="block h-full bg-white" style={{ width: `${data.cacheHit*100}%` }} /></span><span className="font-mono text-[11px] text-zinc-500">cached</span></div>
-          </CardContent>
-        </Card>
-        <Card className="border-zinc-800 bg-zinc-900">
-          <CardHeader className="pb-2"><CardTitle className="flex items-center gap-1.5 font-mono text-xs uppercase tracking-widest text-zinc-500"><Coins className="h-3.5 w-3.5" /> Cost (est.)</CardTitle></CardHeader>
-          <CardContent>
-            <div className="text-xl font-bold tracking-tight">${data.cost.toFixed(2)} <span className="text-xs font-normal text-zinc-500">· 8 free models</span></div>
-            <div className="mt-1 font-mono text-[11px] text-zinc-400">ValueScore 999 · $0 / 1M fallback</div>
-            <div className="mt-2"><Badge className="bg-white text-zinc-900">Free tier · $0</Badge></div>
-          </CardContent>
-        </Card>
-        <Card className="border-zinc-800 bg-zinc-900">
-          <CardHeader className="pb-2"><CardTitle className="flex items-center gap-1.5 font-mono text-xs uppercase tracking-widest text-zinc-500"><Clock className="h-3.5 w-3.5" /> Avg TTFT</CardTitle></CardHeader>
-          <CardContent>
-            <div className="text-xl font-bold tracking-tight">{(data.avgTtftMs/1000).toFixed(1)}s <span className="text-xs font-normal text-zinc-500">· p95 {(data.p95Ms/1000).toFixed(1)}s</span></div>
-            <div className="mt-1 font-mono text-[11px] text-zinc-400">keepalive 2s · watchdog 60s · stalls 5</div>
-            <div className="mt-2"><Badge variant="outline" className="border-zinc-800 bg-zinc-950 font-mono text-xs">TTFT to first token</Badge></div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card className="overflow-hidden border-zinc-800 bg-zinc-900 p-0">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800 p-4">
-          <div><h3 className="font-mono text-xs uppercase tracking-widest text-zinc-500">Requests & Tokens — {period}</h3><p className="font-mono text-[11px] text-zinc-500">area chart placeholder · real charts via uPlot / chart.js later · SVG sparkline proves layout</p></div>
-          <div className="flex gap-2"><Badge variant="outline" className="gap-1.5 border-zinc-800 bg-zinc-950"><span className="h-2 w-2 rounded-full bg-white" /> requests</Badge><Badge variant="outline" className="gap-1.5 border-zinc-800 bg-zinc-950"><span className="h-2 w-2 rounded-full bg-emerald-500" /> tokens</Badge></div>
-        </div>
-        <div className="p-3">
-          <Sparkline points={data.points.length ? data.points : [{t:"00:00",requests:20,tokens:5000},{t:"06:00",requests:88,tokens:15400},{t:"12:00",requests:143,tokens:28100},{t:"18:00",requests:112,tokens:21400},{t:"now",requests:98,tokens:18200}]} />
-          <div className="mt-1 flex flex-wrap justify-between gap-2 font-mono text-[11px] text-zinc-500"><span>Peak 14.3 req/min @ 14:20 · trough 1.2/min @ 04:10</span><span>Real impl: GET /api/usage?period={period} → uPlot area chart {fromMock ? "(mock fallback)" : ""}</span></div>
-        </div>
-      </Card>
-
-      <div className="grid gap-3 lg:grid-cols-[1.3fr_.7fr]">
-        <Card className="overflow-hidden border-zinc-800 bg-zinc-900 p-0">
-          <div className="flex items-center justify-between p-4"><h3 className="font-mono text-xs uppercase tracking-widest text-zinc-500">Breakdown by model</h3><Button variant="outline" size="sm" className="border-zinc-800 bg-zinc-950">Browse models →</Button></div>
-          <div className="overflow-auto border-y border-zinc-800">
-            <Table className="min-w-[720px]">
-              <TableHeader><TableRow className="border-zinc-800 hover:bg-transparent">
-                <TableHead className="font-mono text-xs uppercase tracking-widest text-zinc-500">Model</TableHead>
-                <TableHead className="text-right font-mono text-xs uppercase tracking-widest text-zinc-500">Req</TableHead>
-                <TableHead className="text-right font-mono text-xs uppercase tracking-widest text-zinc-500">Tokens</TableHead>
-                <TableHead className="text-right font-mono text-xs uppercase tracking-widest text-zinc-500">Share</TableHead>
-                <TableHead className="text-right font-mono text-xs uppercase tracking-widest text-zinc-500">Avg TTFT</TableHead>
-                <TableHead className="text-right font-mono text-xs uppercase tracking-widest text-zinc-500">Cost</TableHead>
-              </TableRow></TableHeader>
-              <TableBody>
-                {data.byModel.length===0 ? <TableRow><TableCell colSpan={6} className="p-0"><Empty className="bg-zinc-950"><EmptyHeader><EmptyMedia variant="icon"><Activity className="h-4 w-4" /></EmptyMedia><EmptyTitle>No usage yet</EmptyTitle><EmptyDescription>Usage breakdown will appear after first requests</EmptyDescription></EmptyHeader></Empty></TableCell></TableRow>
-                : data.byModel.map((r)=> (
-                  <TableRow key={r.model} className="border-zinc-800">
-                    <TableCell className="font-mono text-xs">{r.model}</TableCell>
-                    <TableCell className="text-right font-mono text-xs">{r.req.toLocaleString()}</TableCell>
-                    <TableCell className="text-right font-mono text-xs">{r.tokens >= 1000 ? `${(r.tokens/1000).toFixed(0)}k` : r.tokens}</TableCell>
-                    <TableCell className="text-right"><span className="mr-1 inline-block h-1.5 w-20 overflow-hidden rounded-full bg-zinc-800 align-middle"><i className="block h-full bg-white" style={{ width: `${r.share}%` }} /></span><span className="font-mono text-xs">{r.share}%</span></TableCell>
-                    <TableCell className="text-right font-mono text-xs">{r.ttftMs ? `${(r.ttftMs/1000).toFixed(1)}s` : "—"}</TableCell>
-                    <TableCell className="text-right font-mono text-xs">${r.cost.toFixed(2)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-          <div className="flex flex-wrap gap-2 p-3">
-            <Badge variant="outline" className="border-zinc-800 bg-zinc-950 font-mono text-xs">Model → filtered Models view</Badge>
-            <Badge variant="outline" className="border-zinc-800 bg-zinc-950 font-mono text-xs">Tokens = IN+OUT</Badge>
-            <Badge variant="outline" className="border-zinc-800 bg-zinc-950 font-mono text-xs">Cost est. via /api/costs</Badge>
-          </div>
-        </Card>
-
-        <div className="grid gap-3">
-          <Card className="border-zinc-800 bg-zinc-900">
-            <CardHeader className="pb-2"><CardTitle className="font-mono text-xs uppercase tracking-widest text-zinc-500">Period & Export</CardTitle></CardHeader>
-            <CardContent className="grid gap-2">
-              <div className="flex gap-2">
-                {(["24h","7d","30d"] as const).map((p)=> <Button key={p} size="sm" variant={period===p ? "default" : "outline"} className={period===p ? "bg-white text-zinc-900 hover:bg-zinc-100" : "border-zinc-800 bg-zinc-950"} onClick={()=>setPeriod(p)}>{p}</Button>)}
-                <Button size="sm" variant="outline" className="border-zinc-800 bg-zinc-950">Custom…</Button>
-              </div>
-              <Button variant="outline" className="w-full border-zinc-800 bg-zinc-950" onClick={exportCsv}><Download className="h-4 w-4" /> Export CSV — breakdown</Button>
-              <Button variant="outline" className="w-full border-zinc-800 bg-zinc-950" onClick={exportCsv}><Download className="h-4 w-4" /> Export JSON — raw events</Button>
-              <div className="font-mono text-[11px] text-zinc-500">GET /api/usage?period={period} · GET /api/costs/budget</div>
-            </CardContent>
-          </Card>
-          <Card className="border-zinc-800 bg-zinc-900">
-            <CardHeader className="pb-2"><CardTitle className="font-mono text-xs uppercase tracking-widest text-zinc-500">Quick stats</CardTitle></CardHeader>
-            <CardContent className="grid gap-2">
-              <div className="flex items-center justify-between"><span className="font-mono text-xs text-zinc-400">Cache hit rate</span><span className="font-mono text-sm font-bold">{Math.round(data.cacheHit*100)}% ↻</span></div>
-              <div className="flex items-center justify-between"><span className="font-mono text-xs text-zinc-400">Error rate</span><span className="font-mono text-sm font-bold text-red-300">{errorRate}% · {data.errors}/{data.requests.toLocaleString()}</span></div>
-              <div className="flex items-center justify-between"><span className="font-mono text-xs text-zinc-400">p95 latency</span><span className="font-mono text-sm font-bold">{(data.p95Ms/1000).toFixed(1)}s</span></div>
-              <div className="flex items-center justify-between"><span className="font-mono text-xs text-zinc-400">Stalls (25s wd)</span><span className="font-mono text-sm font-bold">5</span></div>
-              <div className="mt-2 flex flex-wrap gap-2"><Badge variant="outline" className="border-zinc-800 bg-zinc-950">Logs →</Badge><Badge variant="outline" className="border-zinc-800 bg-zinc-950">Analytics →</Badge><Badge variant="outline" className="border-zinc-800 bg-zinc-950">Costs →</Badge></div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      <div className="grid gap-4 lg:grid-cols-[1.3fr_.7fr]"><Card className="overflow-hidden p-0"><div className="px-4 py-3"><h3 className="font-mono text-xs uppercase text-muted-foreground">Breakdown by model</h3></div><div className="overflow-auto border-y border-border"><Table className="min-w-[720px]"><TableHeader><TableRow><TableHead>Model</TableHead><TableHead className="text-right">Req</TableHead><TableHead className="text-right">Tokens</TableHead><TableHead className="text-right">Share</TableHead><TableHead className="text-right">Avg TTFT</TableHead><TableHead className="text-right">Cost</TableHead></TableRow></TableHeader><TableBody>{data.byModel.length === 0 ? <TableRow><TableCell colSpan={6} className="p-6 text-center font-mono text-xs text-muted-foreground">No usage yet</TableCell></TableRow> : data.byModel.map((r) => <TableRow key={r.model}><TableCell className="font-mono text-xs">{r.model}</TableCell><TableCell className="text-right font-mono text-xs tabular-nums">{r.req.toLocaleString()}</TableCell><TableCell className="text-right font-mono text-xs tabular-nums">{r.tokens === null ? unknown : r.tokens >= 1000 ? `${(r.tokens / 1000).toFixed(0)}k` : r.tokens}</TableCell><TableCell className="text-right font-mono text-xs tabular-nums">{r.share}%</TableCell><TableCell className="text-right font-mono text-xs tabular-nums">{r.ttftMs === null ? unknown : `${(r.ttftMs / 1000).toFixed(1)}s`}</TableCell><TableCell className="text-right font-mono text-xs tabular-nums">{r.cost === null ? unknown : `$${r.cost.toFixed(2)}`}</TableCell></TableRow>)}</TableBody></Table></div><div className="flex flex-wrap gap-2 px-4 py-3"><Badge variant="outline" className="font-mono text-xs">Tokens and costs when reported</Badge></div></Card><div className="grid gap-4"><Card><CardHeader className="pb-2"><CardTitle className="font-mono text-[11px] uppercase text-muted-foreground">Quick stats</CardTitle></CardHeader><CardContent className="grid gap-2"><div className="flex justify-between"><span className="font-mono text-xs text-muted-foreground">Cache hit rate</span><span className="font-mono text-sm tabular-nums">{data.cacheHit === null ? unknown : `${Math.round(data.cacheHit * 100)}%`}</span></div><div className="flex justify-between"><span className="font-mono text-xs text-muted-foreground">Error rate</span><span className="font-mono text-sm tabular-nums">{errorRate}% · {data.errors}/{data.requests.toLocaleString()}</span></div><div className="flex justify-between"><span className="font-mono text-xs text-muted-foreground">p95 latency</span><span className="font-mono text-sm tabular-nums">{data.p95Ms === null ? unknown : `${(data.p95Ms / 1000).toFixed(1)}s`}</span></div></CardContent></Card><Button variant="outline" className="w-full" onClick={exportCsv}><Download className="h-4 w-4" /> Export CSV</Button></div></div>
     </div>
   );
 }
