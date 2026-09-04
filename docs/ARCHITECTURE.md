@@ -43,9 +43,9 @@ Error path (`classifyError` in `src/router/circuitBreaker.ts`): `400` → `REJEC
 | Module | Path | Responsibility | Key Exports |
 |---|---|---|---|
 | **Entry** | `src/index.ts` | Hono app, route wiring, `GET /health` | `app`, `start()` |
-| **Routes** | `src/routes/chat.ts`, `messages.ts`, `models.ts` | Hono handlers — Zod parse → normalizer → dispatch → streaming | `mountChat`, `mountMessages`, `mountModels` |
-| **Middleware** | `src/middleware/auth.ts`, `bodyLimit.ts`, `contentType.ts`, `requestId.ts` | 415 guard, 413 body limit (1 MB), 401 auth, request-id propagation | `authMiddleware`, `bodyLimitMiddleware` |
-| **Schemas** | `src/schemas/chat.ts`, `messages.ts` | Ingress Zod schemas (max_tokens bounds, tool shapes) | `ChatCompletionRequestSchema` |
+| **Routes** | `src/routes/chat.ts`, `messages.ts`, `models.ts`, `usage.ts` | Hono handlers — Zod parse → normalizer → dispatch → streaming (usage: period validation → summary) | `mountChat`, `mountMessages`, `mountModels`, `mountUsage` |
+| **Middleware** | `src/middleware/auth.ts`, `bodyLimit.ts`, `contentType.ts`, `requestId.ts`, `usage.ts` | 415 guard, 413 body limit (1 MB), 401 auth, request-id propagation, post-response usage recording | `authMiddleware`, `bodyLimitMiddleware`, `usageMiddleware` |
+| **Schemas** | `src/schemas/chat.ts`, `messages.ts`, `usage.ts` | Ingress Zod schemas (max_tokens bounds, tool shapes, usage period query) | `ChatCompletionRequestSchema`, `UsageQuerySchema` |
 | **Model Registry** | `src/config/models.ts` | Declarative per-model caps (`contextWindow`, `maxOutputTokens`, `stripParams`, `requiresThinkingReconciliation`) | `MODEL_REGISTRY`, `ModelSpec` |
 | **Provider Registry** | `src/config/providers.ts` | Upstream base URLs, key env mapping, relay flag | `PROVIDERS`, `getProviderForModel` |
 | **Intelligence Sync** | `src/intelligence/sync.ts` | Background sync from OpenRouter (`/api/v1/models`) + Artificial Analysis v2 — started at the serve entry point (guarded in tests), 6 h interval, never blocks startup. Snapshot is advisory: `getModelSpec` falls back to the synced snapshot for unknown ids (OpenRouter passthrough), but the static registry stays authoritative in `/v1/models` precedence | `syncModels()`, `startIntelligenceSync()` |
@@ -61,6 +61,7 @@ Error path (`classifyError` in `src/router/circuitBreaker.ts`): `400` → `REJEC
 | **Combo** | `src/router/combo.ts` | `fallback` / `priority` / `value-driven` strategies, least-busy selection, healthy-first ordering via live breaker states | `routeCombo()` |
 | **Candidates** | `src/router/candidates.ts` | Shared upstream-candidate resolution for both routes — primary provider URL, wire-compatible alternates hosting the same slug, per-provider `allowPrivate` threading | `buildUpstreamCandidates()`, `routerActionHeaders()` |
 | **Transport** | `src/router/transport.ts` | Relay vs direct selection, `RELAY_TIMEOUT_MS = 25_000`, header sanitization, `x-relay-auth` | `dispatch()`, `proxyFetch()` |
+| **Usage** | `src/observability/usage.ts` | Bounded process-local request recorder (10k ring, restart clears) + period/model summaries; gateway latency only, token/cost fields null until upstream supplies them | `recordUsage`, `summarizeUsage` |
 ---
 
 ## Data Flow & Invariants
@@ -95,7 +96,7 @@ Same 7 phases in `devdocs/02-ROADMAP.md`:
 ```bash
 pnpm build        # tsup → dist/index.js ~190 KB (+ sourcemap + d.ts)
 pnpm typecheck    # tsc --noEmit — clean on main
-env -u AUTH_TOKENS pnpm test   # 40 files, 568 tests — hermetic app.request()
+env -u AUTH_TOKENS pnpm test   # 43 files, 588 tests — hermetic app.request()
 
 ```
 

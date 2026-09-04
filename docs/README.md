@@ -152,22 +152,25 @@ curl -N http://localhost:3000/v1/messages \
 | `GET` | `/v1/models` | Enriched model list (static registry first; context window, modalities, TPS/TTFT when intelligence sync is enabled) |
 | `POST` | `/v1/chat/completions` | OpenAI Chat Completions (stream + non-stream) |
 | `POST` | `/v1/messages` | Anthropic Messages (stream + non-stream) |
+| `GET` | `/v1/usage?period=24h|7d|30d` | Authenticated process-local request/error and gateway-latency summary; empty until requests are observed |
 | `GET` | `/health` | Liveness probe reporting `{ status, uptime, version }` (`/health/live`, `/health/ready` also available) |
 | `GET` | `/` | Built-in web dashboard (React 19 + Vite app served from `apps/web/dist`; exempt from bearer auth, as are `/assets/*` and favicon) |
 
 ## Project Structure
 
-Canonical pipeline core — 17 files (same everywhere — `docs/`, code, `AGENTS.md`). Full `src/` is 30 files including routes/middleware/schemas wiring and one co-located test:
+Canonical pipeline core — 17 files (same everywhere — `docs/`, code, `AGENTS.md`). Full `src/` is 34 files including routes/middleware/schemas/observability wiring and one co-located test:
 
 ```
 src/
 ├── index.ts                              # Hono app factory, middleware order, route wiring, /health*
 ├── config/
-│   ├── models.ts                         # MODEL_REGISTRY — 114 entries: contextWindow, maxOutputTokens, supportedParams, stripParams (+ syncedSnapshot fallback for dynamic ids)
-│   └── providers.ts                      # 32 ProviderSpecs: baseUrl, key env, timeout, relay tier, allowPrivate opt-in
+│   ├── models.ts                         # MODEL_REGISTRY — 122 entries: contextWindow, maxOutputTokens, supportedParams, stripParams (+ syncedSnapshot fallback for dynamic ids)
+│   └── providers.ts                      # 35 ProviderSpecs: baseUrl, key env, timeout, relay tier, allowPrivate opt-in
 ├── intelligence/
 │   ├── sync.ts                           # Background sync (OpenRouter + Artificial Analysis), 6 h interval, never blocks requests
 │   └── scoring.ts                        # Quality / price value score (is it worth it?)
+├── observability/
+│   └── usage.ts                           # Bounded process-local request recorder + period/model summaries
 ├── normalizer/
 │   ├── clamp.ts                          # Dynamic max_tokens & context-window budgeting
 │   ├── sanitize.ts                       # Strip unsupported sampling params
@@ -185,9 +188,9 @@ src/
 │   ├── combo.ts                          # Fallback / priority / value-driven routing
 │   ├── circuitBreaker.ts                 # Error classifier & cooldowns
 │   └── transport.ts                      # SSRF-guarded relay + direct dispatch, 25 s relay watchdog
-├── routes/                               # Hono route handlers (chat, messages, models) — breaker & combo wired here
-├── middleware/                           # auth (timing-safe digest), bodyLimit, contentType, requestId, errors
-└── schemas/                              # Zod ingress schemas (chat, messages)
+├── routes/                               # Hono route handlers (chat, messages, models, usage) — breaker & combo wired here
+├── middleware/                           # auth (timing-safe digest), bodyLimit, contentType, requestId, usage, errors
+└── schemas/                              # Zod ingress schemas (chat, messages, usage query)
 scripts/import-provider.ts                # Provider/model importer (--dry-run audit, --merge append-only splice)
 apps/web/                                 # React 19 + Vite dashboard workspace (dev proxies /v1 + /health to the gateway)
 ```
@@ -210,11 +213,13 @@ pnpm typecheck    # tsc --noEmit
 ### Tests
 
 ```bash
-env -u AUTH_TOKENS pnpm test   # hermetic gate (CI): 40 suites, 568 tests, no secrets, no network
+env -u AUTH_TOKENS pnpm test   # hermetic gate (CI): 43 files, 588 tests, no secrets, no network
 pnpm test                      # normal dev (uses .env if present)
 pnpm test:coverage             # vitest run --coverage (threshold 85%)
 ```
 All tests run hermetically via Hono's in-memory `app.request()` — no ports, no live upstreams.
+
+Usage telemetry is process-local and bounded to 10,000 records. It resets on restart and is not shared across multiple instances; token, cost, cache, and TTFT fields remain unknown until an upstream response supplies them.
 
 ---
 

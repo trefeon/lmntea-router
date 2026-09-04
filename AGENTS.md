@@ -24,7 +24,7 @@ Read `docs/README.md` (quick start + curl) and `docs/ARCHITECTURE.md` (pipeline 
 **Scripts (canonical):**
 ```bash
 pnpm dev          # bun --watch src/index.ts (dev:node = tsx watch)
-pnpm test         # vitest run — 40 suites, 568 tests
+pnpm test         # vitest run — 43 files, 588 tests
 pnpm test:watch   # vitest
 pnpm test:coverage# vitest run --coverage (threshold 85%)
 pnpm lint         # biome check .
@@ -41,8 +41,8 @@ pnpm start        # node dist/index.js
 src/
 ├── index.ts                              # Hono app factory, middleware order, route wiring, /health(/live|/ready)
 ├── config/
-│   ├── models.ts                         # MODEL_REGISTRY — 114 entries: contextWindow, maxOutputTokens, supportedParams, stripParams (+ syncedSnapshot dynamic fallback)
-│   └── providers.ts                      # 32 ProviderSpecs: baseUrl, key env, timeoutMs, relay tier, allowPrivate opt-in
+│   ├── models.ts                         # MODEL_REGISTRY — 122 entries: contextWindow, maxOutputTokens, supportedParams, stripParams (+ syncedSnapshot dynamic fallback)
+│   └── providers.ts                      # 35 ProviderSpecs: baseUrl, key env, timeoutMs, relay tier, allowPrivate opt-in
 ├── intelligence/
 │   ├── sync.ts                           # OpenRouter + Artificial Analysis background sync
 │   └── scoring.ts                        # valueScore = quality/price, tier ranking
@@ -65,7 +65,7 @@ src/
     └── transport.ts                      # SSRF guard (IPv4-mapped IPv6 normalized) relay 25 s watchdog + direct/VPS, allowPrivate opt-in
 ```
 
-Full `src/` is 30 files — the 17 above are the pipeline core; `src/routes/` (chat, messages, models — breaker & combo wired here), `src/middleware/` (auth, bodyLimit, contentType, requestId, errors), `src/schemas/`, and `src/types.ts` are wiring around that core. Workspace also holds `scripts/import-provider.ts` (registry importer) and the `apps/web/` React dashboard.
+Full `src/` is 34 files — the 17 above are the pipeline core; `src/routes/` (chat, messages, models, usage — breaker & combo wired here), `src/middleware/` (auth, bodyLimit, contentType, requestId, usage, errors), `src/schemas/` (chat, messages, usage query), `src/observability/` (bounded process-local usage recorder), and `src/types.ts` are wiring around that core. Workspace also holds `scripts/import-provider.ts` (registry importer) and the `apps/web/` React dashboard.
 `tests/` mirrors `src/` (see §5). Cross-doc invariant: `docs/ARCHITECTURE.md` and `docs/README.md` repeat this core tree verbatim — update all three in one commit if it ever changes.
 ---
 
